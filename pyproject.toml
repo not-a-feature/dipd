@@ -3,11 +3,11 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kollabi_GCSKOENIG"
+name = "kollabi"
 version = "0.0.1"
 authors = [
   { name="Gunnar König", email="g.koenig.edu@pm.me" },
-  { name="Eric Günther", email="TODO" },
+  { name="Eric Günther", email="eric.guenther@uni-tuebingen.de" },
 ]
 description = "Quantifying collaboration between variables."
 readme = "README.md"
