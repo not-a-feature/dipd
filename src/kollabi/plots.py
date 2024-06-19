@@ -7,7 +7,6 @@ import pandas as pd
 
 idx = pd.IndexSlice
 
-
 def forceplot(res, feature, figsize=None, ax=None, split_additive=False):
     BAR_WIDTH = 0.6  # determines width of the bars
     HLINE_WIDTH = 0.6
@@ -16,11 +15,11 @@ def forceplot(res, feature, figsize=None, ax=None, split_additive=False):
         BAR_WIDTH = BAR_WIDTH / 2
 
     # determines colors and order of the stacked bars
-    COLOR_DICT = {'additive_collab': '#9F76F5', 'additive_collab_wo_cov': '#C776F5', '-2cov_g1_g2': '#7677F5', 'synergetic_collab': '#7AF58D', 'var_f2': 'gray', 'var_f1': 'lightgray', 'total': 'black'}
+    COLOR_DICT = {'additive_collab': '#9F76F5', 'additive_collab_explv': '#C776F5', 'additive_collab_cov': '#7677F5', 'interactive_collab': '#7AF58D', 'var_g2': 'gray', 'var_g1': 'lightgray', 'total': 'black'}
     patches = [mpatches.Patch(color=color, label=label) for label, color in COLOR_DICT.items()]        
 
-    res['additive_collab'] = res['-2cov_g1_g2'] + res['additive_collab_wo_cov']
-    split_scores = ['-2cov_g1_g2', 'additive_collab_wo_cov']
+    res['additive_collab'] = res['additive_collab_cov'] + res['additive_collab_explv']
+    split_scores = ['additive_collab_cov', 'additive_collab_explv']
     if not split_additive:
         res.drop(split_scores, axis=1, inplace=True)
     
