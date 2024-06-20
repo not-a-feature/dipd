@@ -69,7 +69,7 @@ class EBM(Predictor):
     def __init__(self, interactions=0):
         super().__init__(interactions=interactions)
         self.model = ExplainableBoostingRegressor(interactions=interactions)
-        
+                
     def predict_components(self, X, components):
         """
         Due to limitations of the interpret package we can query multiple components at once,
@@ -90,7 +90,7 @@ class EBM(Predictor):
             comp_names.append(comp_name)
             comp_ixs.append(comp_index)
             
-        comp_ixs = np.array(comp_ixs)
+        comp_ixs = np.array(comp_ixs).astype(int)
         
         # taken from the interpret package
         X, n_samples = preclean_X(X, self.model.feature_names_in_, self.model.feature_types_in_)
@@ -102,24 +102,12 @@ class EBM(Predictor):
             self.model.feature_names_in_,
             self.model.feature_types_in_,
             self.model.bins_,
-            self.model.term_scores_[comp_ixs],
-            self.model.term_features_[comp_ixs],
+            [self.model.term_scores_[comp_ix] for comp_ix in comp_ixs],
+            [self.model.term_features_[comp_ix] for comp_ix in comp_ixs],
         )        
         
-        return explanations
-        
-        # members_indexes = self.model.term_features_[comp_index]
-        
-        # bins_ixs = []
-        # for i, member in enumerate(members_indexes):
-        #     bins = self.model.bins_[member][0]
-        #     # TODO handle missing values or unseen values
-        #     if isinstance(bins, dict):
-        #         get_bin_idxs = np.vectorize(bins.get)
-        #         bin_idx = get_bin_idxs(X.loc[:, component[i]].values)
-        #     else:
-        #         bin_idx = np.digitize(X.loc[:, component[i]].values, bins) + 1 - is_interaction
+        return np.mean(explanations, axis=1)
+    
+    def predict_component(self, X, component):
+        return self.predict_components(X, [component])
 
-        #     bins_ixs.append(bin_idx)
-        
-        # return self.model.term_scores_[comp_index][tuple(bins_ixs)]
