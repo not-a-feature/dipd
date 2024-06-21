@@ -1,1 +1,1 @@
-from kollabi.explainers import CollabExplainer
+from kollabi.explainer import CollabExplainer

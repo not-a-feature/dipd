@@ -7,7 +7,11 @@ import pandas as pd
 
 idx = pd.IndexSlice
 
-def forceplot(res, feature, figsize=None, ax=None, split_additive=False):
+def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False):
+    """
+    Forecplot that takes the results of decompositions and plots them as a stacked bar plot.
+    data: pd.DataFrame with the decomposition scores as index and the columns as the features
+    """
     BAR_WIDTH = 0.6  # determines width of the bars
     HLINE_WIDTH = 0.6
     SEPARATOR_IDENT_PROP = 0.03
@@ -18,16 +22,16 @@ def forceplot(res, feature, figsize=None, ax=None, split_additive=False):
     COLOR_DICT = {'additive_collab': '#9F76F5', 'additive_collab_explv': '#C776F5', 'additive_collab_cov': '#7677F5', 'interactive_collab': '#7AF58D', 'var_g2': 'gray', 'var_g1': 'lightgray', 'total': 'black'}
     patches = [mpatches.Patch(color=color, label=label) for label, color in COLOR_DICT.items()]        
 
-    res['additive_collab'] = res['additive_collab_cov'] + res['additive_collab_explv']
+    data.loc['additive_collab'] = data.loc['additive_collab_cov'] + data.loc['additive_collab_explv']
     split_scores = ['additive_collab_cov', 'additive_collab_explv']
     if not split_additive:
-        res.drop(split_scores, axis=1, inplace=True)
+        data.drop(split_scores, axis=0, inplace=True)
     
     # sort scores according to COLOR_DICT
-    res = res[sorted(res.columns, key=tuple(COLOR_DICT.keys()).index)]
+    data = data.loc[sorted(data.index, key=tuple(COLOR_DICT.keys()).index)]
+    # data = res
     
     # sort features by total score
-    data = res.loc[idx[feature, :], :].reset_index().drop('feature1', axis=1).set_index('feature2').transpose()
     normal_scores = [col for col in list(data.index) if col not in split_scores] # names of the decomposition score except additive split scores
     total_scores = data.loc[normal_scores, :].sum(axis=0)
     data = data[total_scores.sort_values(ascending=False).index]
@@ -170,7 +174,7 @@ def forceplot(res, feature, figsize=None, ax=None, split_additive=False):
         
         # Add labels and title
         ax.set_ylabel('Proportion of Var(Y)')
-        ax.set_title('Collab explanations for feature {} (f1)'.format(feature))
+        ax.set_title('Collab explanations for feature {} (f1)'.format(title_fs_name))
         margin = 0.05 * (max_val - min_val)
         ax.set_ylim(min_val - margin, max_val + margin)
         plt.legend(handles=patches, loc='upper right')

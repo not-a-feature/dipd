@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+import scipy.special 
 import math
 import tqdm
 import itertools
@@ -11,7 +12,6 @@ import seaborn as sns
 
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import r2_score
-from interpret.glassbox import ExplainableBoostingRegressor
 
 from kollabi.plots import forceplot
 
@@ -34,7 +34,7 @@ class CollabExplainer:
 
     RETURN_NAMES = ['var_g1', 'var_g2', 'additive_collab_explv', 'additive_collab_cov', 'interactive_collab']
 
-    def __init__(self, df, target, test_size=0.2, verbose=False) -> None:
+    def __init__(self, df, target, learner, test_size=0.2, verbose=False) -> None:
         self.df = df
         self.target = target
         self.fs = [col for col in df.columns if col != target]
@@ -42,6 +42,7 @@ class CollabExplainer:
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(df[self.fs], df[target], test_size=test_size)
         self.verbose = verbose
         self.decomps = {}
+        self.Learner = learner
         
     def new_split(self, test_size=None):
             """
@@ -99,11 +100,20 @@ class CollabExplainer:
             return res_s
         
     def _assert_comb_valid(self, comb):
+        """
+        Asserts that the combination contains two elements, that the features are in the columns, that the 
+        two sets are disjoint. If an element is a string, it is converted to a list, such that always a list
+        of two lists is returned.
+        """
         assert len(comb) == 2, 'Please provide exactly two sets of features'
         comb_ = list(comb)
         for i in range(len(comb_)):
             if isinstance(comb_[i], str):
                 comb_[i] = [comb_[i]]
+            elif isinstance(comb_[i], tuple):
+                comb_[i] = list(comb_[i])
+            else:
+                assert isinstance(comb_[i], list), 'The elements of the combination must be strings or lists'
             assert all([f in self.fs for f in comb_[i]]), 'Feature not in the dataset'
         assert len(set(comb_[0]).intersection(set(comb_[1]))) == 0, 'the two sets of features must be disjoint'
         return comb_
@@ -119,85 +129,58 @@ class CollabExplainer:
             self.decomps[comb_s] = res
             return res
         
-    def compute(self, comb):
+    def compute(self, comb, order=2):
         comb = self._assert_comb_valid(comb)
         return_names = self.RETURN_NAMES
         
+        # comb = [f for gr in comb for f in gr]
+        all_fs = [f for gr in comb for f in gr]
         
-        comb = [f for gr in comb for f in gr]
-        all_numeric = all(pd.to_numeric(self.df[col], errors='coerce').notna().all() for col in comb)
-
+        # collect interaction terms
+        get_terms = lambda elem, order : sum([list(itertools.combinations(elem, d)) for d in range(2, order+1)], [])
+        terms_g1 = get_terms(comb[0], order)
+        terms_g2 = get_terms(comb[1], order)
+        terms_g = terms_g1 + terms_g2
         
-        if all_numeric:
-            y = self.df[self.target]
-            var_y = np.var(y)
+        y = self.df[self.target]
+        var_y = np.var(y)
+        
+        model_full = self.Learner(interactions=scipy.special.comb(len(all_fs), order))
+        model_full.fit(self.X_train.loc[:, all_fs], self.y_train)
+        var_total = r2_score(self.y_test, model_full.predict(self.X_test))
+        
+        model_order1 = self.Learner(interactions=terms_g)
+        model_order1.fit(self.X_train.loc[:, all_fs], self.y_train)
+        var_GAM = r2_score(self.y_test, model_order1.predict(self.X_test))
 
-            X_train, X_test, y_train, y_test = train_test_split(self.df[comb], y, test_size=0.2, random_state=42)
+        f1 = self.Learner(interactions=scipy.special.comb(len(comb[0]), order))
+        f1.fit(self.X_train[comb[0]], self.y_train)
+        var_f1 = r2_score(self.y_test, f1.predict(self.X_test[comb[0]]))
 
-            GAM2 = ExplainableBoostingRegressor(interactions=2)
-            GAM2.fit(X_train, y_train)
-            var_total = r2_score(y_test, GAM2.predict(X_test))
-            #show(GAM2.explain_global())
+        f2 = self.Learner(interactions=scipy.special.comb(len(comb[1]), order))
+        f2.fit(self.X_train[comb[1]], self.y_train)
+        var_f2 = r2_score(self.y_test, f2.predict(self.X_test[comb[1]]))
 
-            GAM1 = ExplainableBoostingRegressor(interactions=0)
-            GAM1.fit(X_train, y_train)
-            var_GAM = r2_score(y_test, GAM1.predict(X_test))
-            #show(GAM1.explain_global())
+        cov_g1_g2 = np.cov(model_order1.predict_components(self.X_test, comb[0] + terms_g1),
+                            model_order1.predict_components(self.X_test, comb[1] + terms_g2))[0, 1]
+        cov_g1_g2 = cov_g1_g2 / var_y
+        additive_collab = (var_f1 + var_f2 - var_GAM) *-1
+        additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
+        interactive_collab = var_total - var_GAM
 
-            f1 = ExplainableBoostingRegressor()
-            f1.fit(X_train[[comb[0]]], y_train)
-            var_f1 = r2_score(y_test, f1.predict(X_test[[comb[0]]]))
-            #show(f1.explain_global())
+        if self.verbose:
+            print(comb)
+            print('total variance Y ', var_y)
+            print('test v(1 cup 2)', var_total)
+            print('training v(1 cup 2): ', r2_score(self.y_train, model_full.predict(self.X_train)))
+            print('Interactive Collaboration: ', interactive_collab)
+            print('v(', comb[0], '): ', var_f1)
+            print('v(', comb[1], '): ', var_f2)
 
-            f2 = ExplainableBoostingRegressor()
-            f2.fit(X_train[[comb[1]]], y_train)
-            var_f2 = r2_score(y_test, f2.predict(X_test[[comb[1]]]))
-            #show(f2.explain_global())
-
-            # getting the component funnctions g1 and g2 of the GAM
-            def g1(val):
-                bins = GAM1.bins_[0][0]
-                if isinstance(bins, dict):
-                # categorical feature
-                    bin_idx = bins[val]
-                else:
-                # continuous feature. bins is an array of cut points
-                # add 1 because the 0th bin is reserved for 'missing'
-                    bin_idx = np.digitize(val, bins) + 1
-                return GAM1.term_scores_[0][bin_idx]
-
-            def g2(val):
-                bins = GAM1.bins_[1][0]
-                if isinstance(bins, dict):
-                # categorical feature
-                    bin_idx = bins[val]
-                else:
-                # continuous feature. bins is an array of cut points
-                # add 1 because the 0th bin is reserved for 'missing'
-                    bin_idx = np.digitize(val, bins) + 1
-                return GAM1.term_scores_[1][bin_idx]
-
-            cov_g1_g2 = np.cov(g1(X_test[[comb[0]]].values[:, 0]), g2(X_test[[comb[1]]].values[:, 0]))[0, 1]
-            cov_g1_g2 = cov_g1_g2 / var_y
-            additive_collab = (var_f1 + var_f2 - var_GAM) *-1
-            additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
-            synergetic_collab = var_total - var_GAM
-
-            if self.verbose:
-                print(comb)
-                print('total variance Y ', var_y)
-                print('test v(1 cup 2)', var_total)
-                print('training v(1 cup 2): ', r2_score(y_train, GAM2.predict(X_train)))
-                print('Interactive Collaboration: ', synergetic_collab)
-                print('v(', comb[0], '): ', var_f1)
-                print('v(', comb[1], '): ', var_f2)
-
-                print('Cov(g1, g2): ', cov_g1_g2 / var_y)
-                print('Additive Collaboration: ', additive_collab)
-                        
-            return pd.Series([var_f1, var_f2, additive_collab_wo_cov, -2*cov_g1_g2, synergetic_collab], index=return_names) 
-        else:
-            return pd.Series([np.nan, np.nan, np.nan, np.nan, np.nan], index=return_names)
+            print('Cov(g1, g2): ', cov_g1_g2 / var_y)
+            print('Additive Collaboration: ', additive_collab)
+                    
+        return pd.Series([var_f1, var_f2, additive_collab_wo_cov, -2*cov_g1_g2, interactive_collab], index=return_names) 
         
     def get_all_pairwise(self, only_precomputed=False, return_matrixs=False):
         '''
@@ -267,6 +250,22 @@ class CollabExplainer:
             results.loc[tuple(comb[::-1]), res_flip.index] = res_flip
         return results
     
+    def get_one_vs_rest(self, feature):
+        """
+        Computes one vs rest decomposition for a given feature
+        """
+        rest = [col for col in self.fs if col != feature]
+        return self.get([feature, rest])
+    
+    def get_all_one_vs_rest(self):
+        """
+        Computes one vs rest decomposition for all features
+        """
+        results = pd.DataFrame(index=self.fs, columns=self.RETURN_NAMES)
+        for feature in tqdm.tqdm(self.fs):
+            results.loc[feature] = self.get_one_vs_rest(feature)
+        return results    
+    
     def hbarplot_comb(self, comb, ax=None, figsize=None, text=True):
         comb = self._assert_comb_valid(comb)
         if ax is None:
@@ -297,10 +296,11 @@ class CollabExplainer:
     
     def forceplot_onefixed(self, feature, figsize=None, ax=None, split_additive=False):
         res = self.get_all_pairwise_onefixed(feature)
-        ax = forceplot(res, feature, figsize=figsize, ax=ax, split_additive=split_additive)
+        data = res.loc[idx[feature, :], :].reset_index().drop('feature1', axis=1).set_index('feature2').transpose()
+        ax = forceplot(data, feature, figsize=figsize, ax=ax, split_additive=split_additive)
         return ax
 
-    def forceplots(self, figsize=(20, 10), split_additive=False, nrows=1, savepath=None):
+    def forceplots_onefixed(self, figsize=(20, 10), split_additive=False, nrows=1, savepath=None):
         nplots = math.ceil(len(self.fs) / nrows)
         axss = []
         for i in range(nplots):
@@ -325,6 +325,14 @@ class CollabExplainer:
                 plt.savefig(savepath + f'forceplts_{fs}.pdf')
             axss.append(axs)
         return axss
+    
+    def forceplot_one_vs_rest(self, figsize=(20, 10), split_additive=False, savepath=None):
+        res = self.get_all_one_vs_rest()
+        data = res.transpose()
+        ax = forceplot(data, 'one_vs_rest', figsize=figsize, split_additive=split_additive)
+        if savepath is not None:
+            plt.savefig(savepath + f'forceplt_one_vs_rest.pdf')
+        return ax
     
     def matrixplots(self, savepath=None):
         tpl = self.get_all_pairwise(return_matrixs=True)

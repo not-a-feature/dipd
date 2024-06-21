@@ -81,14 +81,18 @@ class EBM(Predictor):
         for component in components:
             if isinstance(component, str):
                 comp_name = component
-            elif isinstance(component, list):
+            elif isinstance(component, list) or isinstance(component, tuple):
+                # component = list(component)
                 component = sorted(component, key=X.columns.tolist().index)
                 comp_name = ' & '.join(component)
             else:
-                raise NotImplementedError('only str or list of strings supported for component')  
-            comp_index = self.model.term_names_.index(comp_name)
-            comp_names.append(comp_name)
-            comp_ixs.append(comp_index)
+                raise NotImplementedError('only str or list of strings supported for component')
+            try:  
+                comp_index = self.model.term_names_.index(comp_name)
+                comp_names.append(comp_name)
+                comp_ixs.append(comp_index)
+            except ValueError:
+                raise ValueError(f'Component {comp_name} not found in model')
             
         comp_ixs = np.array(comp_ixs).astype(int)
         
