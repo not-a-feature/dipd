@@ -7,7 +7,13 @@ import pandas as pd
 
 idx = pd.IndexSlice
 
-def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False):
+FORCEPLOT_COLOR_DICT = {'additive_collab': '#9F76F5', 'additive_collab_explv': '#C776F5',
+                        'additive_collab_cov': '#7677F5', 'interactive_collab': '#7AF58D',
+                        'var_g2': 'gray', 'var_g1': 'lightgray', 'total': 'black'}
+    
+
+def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, color_dict=None,
+              explain_surplus=False, rest_feature=2):
     """
     Forecplot that takes the results of decompositions and plots them as a stacked bar plot.
     data: pd.DataFrame with the decomposition scores as index and the columns as the features
@@ -19,7 +25,9 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False):
         BAR_WIDTH = BAR_WIDTH / 2
 
     # determines colors and order of the stacked bars
-    COLOR_DICT = {'additive_collab': '#9F76F5', 'additive_collab_explv': '#C776F5', 'additive_collab_cov': '#7677F5', 'interactive_collab': '#7AF58D', 'var_g2': 'gray', 'var_g1': 'lightgray', 'total': 'black'}
+    COLOR_DICT = color_dict
+    if COLOR_DICT is None:
+        COLOR_DICT = FORCEPLOT_COLOR_DICT
     patches = [mpatches.Patch(color=color, label=label) for label, color in COLOR_DICT.items()]        
 
     data.loc['additive_collab'] = data.loc['additive_collab_cov'] + data.loc['additive_collab_explv']
@@ -33,6 +41,8 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False):
     
     # sort features by total score
     normal_scores = [col for col in list(data.index) if col not in split_scores] # names of the decomposition score except additive split scores
+    if explain_surplus:
+        normal_scores = [col for col in normal_scores if f'{rest_feature}' not in col]
     total_scores = data.loc[normal_scores, :].sum(axis=0)
     data = data[total_scores.sort_values(ascending=False).index]
     total_scores = total_scores[data.columns]
@@ -91,7 +101,7 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False):
             positive_values = np.where(values > 0, values, 0)
             negative_values = np.where(values < 0, values, 0)
             
-            if label not in split_scores:
+            if label in normal_scores:
                 
                 # Plot positive values
                 positive_bottom = positive_top - positive_values
@@ -132,7 +142,7 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False):
                 #                        edgecolor=COLOR_DICT[label], lw=3)
                 #     ax.add_patch(line)
                 
-            elif split_additive:
+            elif split_additive and label in split_scores:
                 positive_bottom_split = positive_top_split - positive_values
                 for jj in range(len(bar_positions)):
                     points_rectangle = [[bar_positions[jj] + DELTA_X + BAR_WIDTH/4, positive_top_split[jj]],

@@ -1,11 +1,15 @@
 import pickle
 import numpy as np
+import warnings
+
+warnings.filterwarnings("ignore", category=UserWarning, lineno=738, message='Missing values detected.')
 
 from interpret.glassbox import ExplainableBoostingRegressor
 
 class Predictor:
-    def __init__(self, interactions=0):
+    def __init__(self, interactions=0.95, exclude=None):
         self.interactions = interactions
+        self.exclude = exclude
         self.model = None
 
     @staticmethod
@@ -66,8 +70,8 @@ from interpret.glassbox._ebm._bin import ebm_eval_terms
                 
 class EBM(Predictor):
     
-    def __init__(self, interactions=0):
-        super().__init__(interactions=interactions)
+    def __init__(self, interactions=0.95, exclude=None):
+        super().__init__(interactions=interactions, exclude=exclude)
         self.model = ExplainableBoostingRegressor(interactions=interactions)
                 
     def predict_components(self, X, components):

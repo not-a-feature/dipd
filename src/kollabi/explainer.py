@@ -43,6 +43,7 @@ class CollabExplainer:
         self.verbose = verbose
         self.decomps = {}
         self.Learner = learner
+        self.models = {}
         
     def new_split(self, test_size=None):
             """
@@ -65,6 +66,10 @@ class CollabExplainer:
             self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.df[self.fs], self.df[self.target],
                                                                                     test_size=test_size)
             self.decomps.clear()
+            
+    # @staticmethod
+    # def _sort_fs(fs):
+    #     return tuple(sorted(fs))
         
     @staticmethod
     def _sort_comb(comb, inner_only=False):
@@ -81,7 +86,7 @@ class CollabExplainer:
         """
         comb_s = tuple(tuple(sorted(c)) for c in comb)
         if not inner_only:
-            comb_s = tuple(sorted(comb))
+            comb_s = tuple(sorted(comb, key=lambda x: (len(x), x)))
             comb_s = tuple(tuple(gr) for gr in comb_s)
         return comb_s
     
@@ -99,6 +104,44 @@ class CollabExplainer:
             res_s = res_s.loc[res.index]
             return res_s
         
+    @staticmethod
+    def _get_terms(fs, order):
+        return sum([list(itertools.combinations(fs, d)) for d in range(2, order+1)], [])
+    
+    @staticmethod
+    def _get_excluded_terms(comb, order):
+        """
+        Get the terms that are not in the combination.
+        """
+        # TODO make more efficient
+        termss = [CollabExplainer._get_terms(elem, order) for elem in comb]
+        allowed_terms = list(itertools.chain(*termss))
+        all_terms = CollabExplainer._get_terms([f for gr in comb for f in gr], order)
+        return [term for term in all_terms if term not in allowed_terms]
+        
+    def _get_model(self, comb, order, return_components=False):
+        """
+        The comb tuple of tuples indicates which groups of features are allowed to interact.
+        The order specifies the max order of interactions.
+        So if we get a tuple with one tuple containing all features, we get the full model of order òrder`.
+        If we get a tuple with two tuples, we get the model of order `order` with the 
+        interactions within the groups only.
+        """
+        comb_s = CollabExplainer._sort_comb(comb)
+        fs = [f for gr in comb for f in gr]
+        key = (order, comb_s)
+        if key in self.models.keys():
+            return self.models[key]
+        else:
+            if len(comb_s) > 1:
+                excluded_terms = CollabExplainer._get_excluded_terms(comb, order)
+                model = self.Learner(exclude=excluded_terms)
+            else:
+                model = self.Learner(exclude=None)
+            model.fit(self.X_train.loc[:, fs], self.y_train)
+            self.models[key] = model
+            return model
+                
     def _assert_comb_valid(self, comb):
         """
         Asserts that the combination contains two elements, that the features are in the columns, that the 
@@ -137,34 +180,36 @@ class CollabExplainer:
         all_fs = [f for gr in comb for f in gr]
         
         # collect interaction terms
-        get_terms = lambda elem, order : sum([list(itertools.combinations(elem, d)) for d in range(2, order+1)], [])
-        terms_g1 = get_terms(comb[0], order)
-        terms_g2 = get_terms(comb[1], order)
-        terms_g = terms_g1 + terms_g2
         
         y = self.df[self.target]
         var_y = np.var(y)
         
-        model_full = self.Learner(interactions=scipy.special.comb(len(all_fs), order))
-        model_full.fit(self.X_train.loc[:, all_fs], self.y_train)
-        var_total = r2_score(self.y_test, model_full.predict(self.X_test))
-        
-        model_order1 = self.Learner(interactions=terms_g)
-        model_order1.fit(self.X_train.loc[:, all_fs], self.y_train)
-        var_GAM = r2_score(self.y_test, model_order1.predict(self.X_test))
+        model_full = self._get_model([all_fs], order)
+        # model_full = self.Learner(interactions=scipy.special.comb(len(all_fs), order))
+        # model_full.fit(self.X_train.loc[:, all_fs], self.y_train)
+        var_total = r2_score(self.y_test, model_full.predict(self.X_test[all_fs]))
 
-        f1 = self.Learner(interactions=scipy.special.comb(len(comb[0]), order))
-        f1.fit(self.X_train[comb[0]], self.y_train)
+        model_order1 = self._get_model(comb, order)        
+        # model_order1 = self.Learner(interactions=terms_g)
+        # model_order1.fit(self.X_train.loc[:, all_fs], self.y_train)
+        var_GAM = r2_score(self.y_test, model_order1.predict(self.X_test[all_fs]))
+
+        f1 = self._get_model([comb[0]], order)
+        # f1 = self.Learner(interactions=scipy.special.comb(len(comb[0]), order))
+        # f1.fit(self.X_train[comb[0]], self.y_train)
         var_f1 = r2_score(self.y_test, f1.predict(self.X_test[comb[0]]))
 
-        f2 = self.Learner(interactions=scipy.special.comb(len(comb[1]), order))
-        f2.fit(self.X_train[comb[1]], self.y_train)
+        f2 = self._get_model([comb[1]], order)
+        # f2 = self.Learner(interactions=scipy.special.comb(len(comb[1]), order))
+        # f2.fit(self.X_train[comb[1]], self.y_train)
         var_f2 = r2_score(self.y_test, f2.predict(self.X_test[comb[1]]))
 
-        cov_g1_g2 = np.cov(model_order1.predict_components(self.X_test, comb[0] + terms_g1),
-                            model_order1.predict_components(self.X_test, comb[1] + terms_g2))[0, 1]
+        terms_g1 = self._get_terms(comb[0], 1) + comb[0]
+        terms_g2 = self._get_terms(comb[1], 1) + comb[1]
+        cov_g1_g2 = np.cov(model_order1.predict_components(self.X_test, terms_g1),
+                            model_order1.predict_components(self.X_test, terms_g2))[0, 1]
         cov_g1_g2 = cov_g1_g2 / var_y
-        additive_collab = (var_f1 + var_f2 - var_GAM) *-1
+        additive_collab = (var_f1 + var_f2 - var_GAM)*-1
         additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
         interactive_collab = var_total - var_GAM
 
@@ -255,7 +300,8 @@ class CollabExplainer:
         Computes one vs rest decomposition for a given feature
         """
         rest = [col for col in self.fs if col != feature]
-        return self.get([feature, rest])
+        res = self.get([feature, rest])
+        return res
     
     def get_all_one_vs_rest(self):
         """
@@ -329,7 +375,8 @@ class CollabExplainer:
     def forceplot_one_vs_rest(self, figsize=(20, 10), split_additive=False, savepath=None):
         res = self.get_all_one_vs_rest()
         data = res.transpose()
-        ax = forceplot(data, 'one_vs_rest', figsize=figsize, split_additive=split_additive)
+        ax = forceplot(data, 'one_vs_rest', figsize=figsize, split_additive=split_additive,
+                       explain_surplus=True, rest_feature=2)
         if savepath is not None:
             plt.savefig(savepath + f'forceplt_one_vs_rest.pdf')
         return ax
