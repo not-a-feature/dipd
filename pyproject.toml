@@ -17,7 +17,19 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Operating System :: OS Independent",
 ]
+dependencies = [
+  "numpy",
+  "pandas",
+  "interpret",
+  "matplotlib",
+  "seaborn",
+  "ucimlrepo",
+  "tqdm",
+  "scipy",
+  "scikit-learn",
+]
 
 [project.urls]
 Homepage = "https://github.com/gcskoenig/kollabi"
 Issues = "https://github.com/gcskoenig/kollabi/issues"
+

@@ -72,7 +72,7 @@ class EBM(Predictor):
     
     def __init__(self, interactions=0.95, exclude=None):
         super().__init__(interactions=interactions, exclude=exclude)
-        self.model = ExplainableBoostingRegressor(interactions=interactions)
+        self.model = ExplainableBoostingRegressor(interactions=interactions, exclude=exclude)
                 
     def predict_components(self, X, components):
         """
@@ -95,8 +95,9 @@ class EBM(Predictor):
                 comp_index = self.model.term_names_.index(comp_name)
                 comp_names.append(comp_name)
                 comp_ixs.append(comp_index)
-            except ValueError:
-                raise ValueError(f'Component {comp_name} not found in model')
+            except Exception as err:
+                print(err)
+                print(f'Probably, component {comp_name} was not found in the model')
             
         comp_ixs = np.array(comp_ixs).astype(int)
         

@@ -5,6 +5,7 @@ import math
 import tqdm
 import itertools
 import logging
+import time
 
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
@@ -86,7 +87,7 @@ class CollabExplainer:
         """
         comb_s = tuple(tuple(sorted(c)) for c in comb)
         if not inner_only:
-            comb_s = tuple(sorted(comb, key=lambda x: (len(x), x)))
+            comb_s = tuple(sorted(comb_s, key=lambda x: (len(x), x)))
             comb_s = tuple(tuple(gr) for gr in comb_s)
         return comb_s
     
@@ -131,8 +132,10 @@ class CollabExplainer:
         fs = [f for gr in comb for f in gr]
         key = (order, comb_s)
         if key in self.models.keys():
+            logging.debug(f'Using precomputed model for {comb_s}')
             return self.models[key]
         else:
+            logging.debug(f'Fitting model for {comb_s}')
             if len(comb_s) > 1:
                 excluded_terms = CollabExplainer._get_excluded_terms(comb, order)
                 model = self.Learner(exclude=excluded_terms)
@@ -184,22 +187,34 @@ class CollabExplainer:
         y = self.df[self.target]
         var_y = np.var(y)
         
+        start = time.time()
         model_full = self._get_model([all_fs], order)
+        end = time.time()
+        logging.info(f'Fitting full model took {end-start} seconds')
         # model_full = self.Learner(interactions=scipy.special.comb(len(all_fs), order))
         # model_full.fit(self.X_train.loc[:, all_fs], self.y_train)
         var_total = r2_score(self.y_test, model_full.predict(self.X_test[all_fs]))
 
-        model_order1 = self._get_model(comb, order)        
+        start = time.time()
+        model_order1 = self._get_model(comb, order)
+        end = time.time()
+        logging.info(f'Fitting model without interactions between the groups took {end-start} seconds')        
         # model_order1 = self.Learner(interactions=terms_g)
         # model_order1.fit(self.X_train.loc[:, all_fs], self.y_train)
         var_GAM = r2_score(self.y_test, model_order1.predict(self.X_test[all_fs]))
 
+        start = time.time()
         f1 = self._get_model([comb[0]], order)
+        end = time.time()
+        logging.info(f'Fitting model for group 1 took {end-start} seconds')
         # f1 = self.Learner(interactions=scipy.special.comb(len(comb[0]), order))
         # f1.fit(self.X_train[comb[0]], self.y_train)
         var_f1 = r2_score(self.y_test, f1.predict(self.X_test[comb[0]]))
 
+        start = time.time()
         f2 = self._get_model([comb[1]], order)
+        end = time.time()
+        logging.info(f'Fitting model for group 2 took {end-start} seconds')
         # f2 = self.Learner(interactions=scipy.special.comb(len(comb[1]), order))
         # f2.fit(self.X_train[comb[1]], self.y_train)
         var_f2 = r2_score(self.y_test, f2.predict(self.X_test[comb[1]]))
