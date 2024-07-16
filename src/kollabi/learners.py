@@ -25,11 +25,13 @@ class Predictor:
     def save(self, path):
         pass
 
-    def predict(self, X):
-        return self.model.predict(X)
+    def predict(self, X, **kwargs):
+        fs = sorted(list(X.columns))
+        return self.model.predict(X.loc[:, fs], **kwargs)
 
     def fit(self, X, y):
-        self.model.fit(X, y)
+        fs = sorted(list(X.columns))
+        self.model.fit(X.loc[:, fs], y)
 
     def predict_component(self, X, component):
         pass
@@ -73,7 +75,7 @@ class EBM(Predictor):
     def __init__(self, interactions=0.95, exclude=None):
         super().__init__(interactions=interactions, exclude=exclude)
         self.model = ExplainableBoostingRegressor(interactions=interactions, exclude=exclude)
-                
+                        
     def predict_components(self, X, components):
         """
         Due to limitations of the interpret package we can query multiple components at once,

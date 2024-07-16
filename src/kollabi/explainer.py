@@ -85,6 +85,7 @@ class CollabExplainer:
         Returns:
             tuple: The sorted combinations.
         """
+        # TODO accomodate for a conditioning group, make sure that the conditioning is always last but the rest is sorted
         comb_s = tuple(tuple(sorted(c)) for c in comb)
         if not inner_only:
             comb_s = tuple(sorted(comb_s, key=lambda x: (len(x), x)))
@@ -110,42 +111,62 @@ class CollabExplainer:
         return sum([list(itertools.combinations(fs, d)) for d in range(2, order+1)], [])
     
     @staticmethod
-    def _get_excluded_terms(comb, order):
+    def _get_excluded_terms(comb, order, C=[]):
         """
         Get the terms that are not in the combination.
         """
         # TODO make more efficient
-        termss = [CollabExplainer._get_terms(elem, order) for elem in comb]
+        C_l = list(C)
+        termss = [CollabExplainer._get_terms(elem + C_l, order) for elem in comb]
         allowed_terms = list(itertools.chain(*termss))
-        all_terms = CollabExplainer._get_terms([f for gr in comb for f in gr], order)
+        fs = [f for gr in comb for f in gr] + C_l
+        all_terms = CollabExplainer._get_terms(fs, order)
         return [term for term in all_terms if term not in allowed_terms]
         
-    def _get_model(self, comb, order, return_components=False):
+    def _get_model(self, comb, order, C=[]):
         """
         The comb tuple of tuples indicates which groups of features are allowed to interact.
         The order specifies the max order of interactions.
         So if we get a tuple with one tuple containing all features, we get the full model of order òrder`.
         If we get a tuple with two tuples, we get the model of order `order` with the 
         interactions within the groups only.
+        The `C` parameter can be used to specify a set of features that we assume to be "known" before,
+        i.e. we fit the model on the residual of the best model with the features C.
+        Those features and all interactions involving the features can also be used by the model.
         """
+        # add conditioning set
         comb_s = CollabExplainer._sort_comb(comb)
+        C_s = sorted(list(C))
         fs = [f for gr in comb for f in gr]
-        key = (order, comb_s)
+        fs_full = fs + C
+                
+        key = (order, comb_s, tuple(C_s))
         if key in self.models.keys():
             logging.debug(f'Using precomputed model for {comb_s}')
             return self.models[key]
         else:
             logging.debug(f'Fitting model for {comb_s}')
+            
+            # regress out conditioning set if nonempty
+            if len(C_s) > 0:
+                model = self._get_model((tuple(C_s)), order, C=[])
+                y_pred = model.predict(self.X_train.loc[:, C_s])
+                y_res = self.y_train - y_pred
+            else:
+                y_res = self.y_train
+                
+            # specify model and the allowed interactions
             if len(comb_s) > 1:
-                excluded_terms = CollabExplainer._get_excluded_terms(comb, order)
+                excluded_terms = CollabExplainer._get_excluded_terms(comb, order, C=C)
                 model = self.Learner(exclude=excluded_terms)
             else:
                 model = self.Learner(exclude=None)
-            model.fit(self.X_train.loc[:, fs], self.y_train)
+                
+            model.fit(self.X_train.loc[:, fs_full], y_res)
             self.models[key] = model
             return model
                 
-    def _assert_comb_valid(self, comb):
+    def _assert_comb_valid(self, comb, C=[]):
         """
         Asserts that the combination contains two elements, that the features are in the columns, that the 
         two sets are disjoint. If an element is a string, it is converted to a list, such that always a list
@@ -162,25 +183,30 @@ class CollabExplainer:
                 assert isinstance(comb_[i], list), 'The elements of the combination must be strings or lists'
             assert all([f in self.fs for f in comb_[i]]), 'Feature not in the dataset'
         assert len(set(comb_[0]).intersection(set(comb_[1]))) == 0, 'the two sets of features must be disjoint'
+        assert len(set(comb_[0]).union(set(comb_[1])).intersection(set(C))) == 0, 'the conditioning set must be disjoint from the two sets'
         return comb_
                     
-    def get(self, comb):
+    def get(self, comb, C=[]):
         comb = self._assert_comb_valid(comb)
         comb_s = CollabExplainer._sort_comb(comb)
-        if comb_s in self.decomps.keys():
-            res = self.decomps[comb_s]
+        key = (comb_s, tuple(sorted(C)))
+        if key in self.decomps.keys():
+            res = self.decomps[key]
             return self._adjust_order(comb, res)
         else:
-            res = self.compute(list(comb_s))
-            self.decomps[comb_s] = res
+            res = self.compute(list(comb_s), C=C)
+            self.decomps[key] = res
             return res
         
-    def compute(self, comb, order=2):
+    def compute(self, comb, order=2, C=[]):
         comb = self._assert_comb_valid(comb)
         return_names = self.RETURN_NAMES
         
         # comb = [f for gr in comb for f in gr]
-        all_fs = [f for gr in comb for f in gr]
+        fs = [f for gr in comb for f in gr]
+        fs_full = fs + C
+        fs_0 = comb[0] + C
+        fs_1 = comb[1] + C
         
         # collect interaction terms
         
@@ -188,39 +214,39 @@ class CollabExplainer:
         var_y = np.var(y)
         
         start = time.time()
-        model_full = self._get_model([all_fs], order)
+        model_full = self._get_model([fs], order, C=C)
         end = time.time()
         logging.info(f'Fitting full model took {end-start} seconds')
         # model_full = self.Learner(interactions=scipy.special.comb(len(all_fs), order))
         # model_full.fit(self.X_train.loc[:, all_fs], self.y_train)
-        var_total = r2_score(self.y_test, model_full.predict(self.X_test[all_fs]))
+        var_total = r2_score(self.y_test, model_full.predict(self.X_test[fs_full]))
 
         start = time.time()
-        model_order1 = self._get_model(comb, order)
+        model_order1 = self._get_model(comb, order, C=C)
         end = time.time()
         logging.info(f'Fitting model without interactions between the groups took {end-start} seconds')        
         # model_order1 = self.Learner(interactions=terms_g)
         # model_order1.fit(self.X_train.loc[:, all_fs], self.y_train)
-        var_GAM = r2_score(self.y_test, model_order1.predict(self.X_test[all_fs]))
+        var_GAM = r2_score(self.y_test, model_order1.predict(self.X_test[fs_full]))
 
         start = time.time()
-        f1 = self._get_model([comb[0]], order)
+        f1 = self._get_model([comb[0]], order, C=C)
         end = time.time()
         logging.info(f'Fitting model for group 1 took {end-start} seconds')
         # f1 = self.Learner(interactions=scipy.special.comb(len(comb[0]), order))
         # f1.fit(self.X_train[comb[0]], self.y_train)
-        var_f1 = r2_score(self.y_test, f1.predict(self.X_test[comb[0]]))
+        var_f1 = r2_score(self.y_test, f1.predict(self.X_test[fs_0]))
 
         start = time.time()
-        f2 = self._get_model([comb[1]], order)
+        f2 = self._get_model([comb[1]], order, C=C)
         end = time.time()
         logging.info(f'Fitting model for group 2 took {end-start} seconds')
         # f2 = self.Learner(interactions=scipy.special.comb(len(comb[1]), order))
         # f2.fit(self.X_train[comb[1]], self.y_train)
-        var_f2 = r2_score(self.y_test, f2.predict(self.X_test[comb[1]]))
+        var_f2 = r2_score(self.y_test, f2.predict(self.X_test[fs_1]))
 
-        terms_g1 = self._get_terms(comb[0], 1) + comb[0]
-        terms_g2 = self._get_terms(comb[1], 1) + comb[1]
+        terms_g1 = self._get_terms(fs_0, 1) + fs_0
+        terms_g2 = self._get_terms(fs_1, 1) + fs_1
         cov_g1_g2 = np.cov(model_order1.predict_components(self.X_test, terms_g1),
                             model_order1.predict_components(self.X_test, terms_g2))[0, 1]
         cov_g1_g2 = cov_g1_g2 / var_y
