@@ -109,8 +109,8 @@ class CollabExplainer:
     @staticmethod
     def _get_terms(fs, order):
         terms = sum([list(itertools.combinations(fs, d)) for d in range(2, order+1)], [])
-        if order >= 1:
-            terms += fs
+        # if order >= 1:
+        #     terms += fs
         return terms
     
     @staticmethod
@@ -253,10 +253,13 @@ class CollabExplainer:
         # f2.fit(self.X_train[comb[1]], self.y_train)
         var_f2 = r2_score(y_test_res, f2.predict(self.X_test[fs_1]))
 
-        terms_g1 = self._get_terms(fs_0, order) 
-        terms_g2 = self._get_terms(fs_1, order) 
-        cov_g1_g2 = np.cov(model_order1.predict_components(self.X_test, terms_g1),
-                            model_order1.predict_components(self.X_test, terms_g2))[0, 1]
+        terms_g1 = self._get_terms(fs_0, order) + comb[0] + C
+        terms_g2 = self._get_terms(fs_1, order) + comb[1]
+        g1 = model_order1.predict_components(self.X_test, terms_g1)
+        g2 = model_order1.predict_components(self.X_test, terms_g2)
+        # TODO orthogonalize g1 and g2 to C
+        
+        cov_g1_g2 = np.cov(g1, g2)[0, 1]
         cov_g1_g2 = cov_g1_g2 / var_y_res
         additive_collab = (var_f1 + var_f2 - var_GAM)*-1
         additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
