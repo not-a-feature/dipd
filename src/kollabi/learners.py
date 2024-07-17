@@ -117,7 +117,7 @@ class EBM(Predictor):
             [self.model.term_features_[comp_ix] for comp_ix in comp_ixs],
         )        
         
-        return np.mean(explanations, axis=1)
+        return np.sum(explanations, axis=1)
     
     def predict_component(self, X, component):
         return self.predict_components(X, [component])

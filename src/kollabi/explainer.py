@@ -108,7 +108,10 @@ class CollabExplainer:
         
     @staticmethod
     def _get_terms(fs, order):
-        return sum([list(itertools.combinations(fs, d)) for d in range(2, order+1)], [])
+        terms = sum([list(itertools.combinations(fs, d)) for d in range(2, order+1)], [])
+        if order >= 1:
+            terms += fs
+        return terms
     
     @staticmethod
     def _get_excluded_terms(comb, order, C=[]):
@@ -149,7 +152,7 @@ class CollabExplainer:
             
             # regress out conditioning set if nonempty
             if len(C_s) > 0:
-                model = self._get_model((tuple(C_s)), order, C=[])
+                model = self._get_model([C_s], order, C=[])
                 y_pred = model.predict(self.X_train.loc[:, C_s])
                 y_res = self.y_train - y_pred
             else:
@@ -208,10 +211,15 @@ class CollabExplainer:
         fs_0 = comb[0] + C
         fs_1 = comb[1] + C
         
-        # collect interaction terms
+        # get baseline
+        if len(C) > 0:
+            b = self._get_model([C], order, C=[])
+            b_pred = b.predict(self.X_test.loc[:, C])
+        else:
+            b_pred = 0
+        y_test_res = self.y_test - b_pred
         
-        y = self.df[self.target]
-        var_y = np.var(y)
+        var_y_res = np.var(y_test_res)
         
         start = time.time()
         model_full = self._get_model([fs], order, C=C)
@@ -219,7 +227,7 @@ class CollabExplainer:
         logging.info(f'Fitting full model took {end-start} seconds')
         # model_full = self.Learner(interactions=scipy.special.comb(len(all_fs), order))
         # model_full.fit(self.X_train.loc[:, all_fs], self.y_train)
-        var_total = r2_score(self.y_test, model_full.predict(self.X_test[fs_full]))
+        var_total = r2_score(y_test_res, model_full.predict(self.X_test[fs_full]))
 
         start = time.time()
         model_order1 = self._get_model(comb, order, C=C)
@@ -227,7 +235,7 @@ class CollabExplainer:
         logging.info(f'Fitting model without interactions between the groups took {end-start} seconds')        
         # model_order1 = self.Learner(interactions=terms_g)
         # model_order1.fit(self.X_train.loc[:, all_fs], self.y_train)
-        var_GAM = r2_score(self.y_test, model_order1.predict(self.X_test[fs_full]))
+        var_GAM = r2_score(y_test_res, model_order1.predict(self.X_test[fs_full]))
 
         start = time.time()
         f1 = self._get_model([comb[0]], order, C=C)
@@ -235,7 +243,7 @@ class CollabExplainer:
         logging.info(f'Fitting model for group 1 took {end-start} seconds')
         # f1 = self.Learner(interactions=scipy.special.comb(len(comb[0]), order))
         # f1.fit(self.X_train[comb[0]], self.y_train)
-        var_f1 = r2_score(self.y_test, f1.predict(self.X_test[fs_0]))
+        var_f1 = r2_score(y_test_res, f1.predict(self.X_test[fs_0]))
 
         start = time.time()
         f2 = self._get_model([comb[1]], order, C=C)
@@ -243,27 +251,27 @@ class CollabExplainer:
         logging.info(f'Fitting model for group 2 took {end-start} seconds')
         # f2 = self.Learner(interactions=scipy.special.comb(len(comb[1]), order))
         # f2.fit(self.X_train[comb[1]], self.y_train)
-        var_f2 = r2_score(self.y_test, f2.predict(self.X_test[fs_1]))
+        var_f2 = r2_score(y_test_res, f2.predict(self.X_test[fs_1]))
 
-        terms_g1 = self._get_terms(fs_0, 1) + fs_0
-        terms_g2 = self._get_terms(fs_1, 1) + fs_1
+        terms_g1 = self._get_terms(fs_0, order) 
+        terms_g2 = self._get_terms(fs_1, order) 
         cov_g1_g2 = np.cov(model_order1.predict_components(self.X_test, terms_g1),
                             model_order1.predict_components(self.X_test, terms_g2))[0, 1]
-        cov_g1_g2 = cov_g1_g2 / var_y
+        cov_g1_g2 = cov_g1_g2 / var_y_res
         additive_collab = (var_f1 + var_f2 - var_GAM)*-1
         additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
         interactive_collab = var_total - var_GAM
 
         if self.verbose:
             print(comb)
-            print('total variance Y ', var_y)
+            print('total variance Y ', var_y_res)
             print('test v(1 cup 2)', var_total)
             print('training v(1 cup 2): ', r2_score(self.y_train, model_full.predict(self.X_train)))
             print('Interactive Collaboration: ', interactive_collab)
             print('v(', comb[0], '): ', var_f1)
             print('v(', comb[1], '): ', var_f2)
 
-            print('Cov(g1, g2): ', cov_g1_g2 / var_y)
+            print('Cov(g1, g2): ', cov_g1_g2 / var_y_res)
             print('Additive Collaboration: ', additive_collab)
                     
         return pd.Series([var_f1, var_f2, additive_collab_wo_cov, -2*cov_g1_g2, interactive_collab], index=return_names) 
@@ -353,12 +361,12 @@ class CollabExplainer:
             results.loc[feature] = self.get_one_vs_rest(feature)
         return results    
     
-    def hbarplot_comb(self, comb, ax=None, figsize=None, text=True):
+    def hbarplot_comb(self, comb, C=[], ax=None, figsize=None, text=True):
         comb = self._assert_comb_valid(comb)
         if ax is None:
             f, ax = plt.subplots(figsize=figsize)
         with sns.axes_style('whitegrid'):
-            d = self.get(comb)
+            d = self.get(comb, C=C)
             d.plot(kind='barh', ax=ax, xlabel=None, ylabel=None, use_index=False)
             plt.title(f'{comb}')
             sns.despine(left=True, bottom=True, ax=ax)
