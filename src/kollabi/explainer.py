@@ -73,7 +73,7 @@ class CollabExplainer:
     #     return tuple(sorted(fs))
         
     @staticmethod
-    def _sort_comb(comb, inner_only=False):
+    def __sort_comb(comb, inner_only=False):
         """
         Sorts the combinations in the given `comb` tuple.
 
@@ -93,12 +93,12 @@ class CollabExplainer:
         return comb_s
     
     @staticmethod
-    def _make_tuple(comb):
+    def __make_tuple(comb):
         return tuple([tuple(gr) for gr in comb])
 
     @staticmethod
-    def _adjust_order(comb, res):
-        if CollabExplainer._sort_comb(comb, inner_only=True) == CollabExplainer._sort_comb(comb, inner_only=False):
+    def __adjust_order(comb, res):
+        if CollabExplainer.__sort_comb(comb, inner_only=True) == CollabExplainer.__sort_comb(comb, inner_only=False):
             return res
         else:
             res_s = res.rename({CollabExplainer.RETURN_NAMES[0]: CollabExplainer.RETURN_NAMES[1],
@@ -107,26 +107,26 @@ class CollabExplainer:
             return res_s
         
     @staticmethod
-    def _get_terms(fs, order):
+    def __get_terms(fs, order, exclude=[]):
         terms = sum([list(itertools.combinations(fs, d)) for d in range(2, order+1)], [])
+        terms = [term for term in terms if term not in exclude]
         # if order >= 1:
         #     terms += fs
         return terms
     
     @staticmethod
-    def _get_excluded_terms(comb, order, C=[]):
+    def __get_excluded_terms(comb, order, C=[]):
         """
         Get the terms that are not in the combination.
         """
-        # TODO make more efficient
         C_l = list(C)
-        termss = [CollabExplainer._get_terms(elem + C_l, order) for elem in comb]
+        termss = [CollabExplainer.__get_terms(elem + C_l, order) for elem in comb]
         allowed_terms = list(itertools.chain(*termss))
         fs = [f for gr in comb for f in gr] + C_l
-        all_terms = CollabExplainer._get_terms(fs, order)
+        all_terms = CollabExplainer.__get_terms(fs, order)
         return [term for term in all_terms if term not in allowed_terms]
         
-    def _get_model(self, comb, order, C=[]):
+    def __get_model(self, comb, order, C=[]):
         """
         The comb tuple of tuples indicates which groups of features are allowed to interact.
         The order specifies the max order of interactions.
@@ -138,7 +138,7 @@ class CollabExplainer:
         Those features and all interactions involving the features can also be used by the model.
         """
         # add conditioning set
-        comb_s = CollabExplainer._sort_comb(comb)
+        comb_s = CollabExplainer.__sort_comb(comb)
         C_s = sorted(list(C))
         fs = [f for gr in comb for f in gr]
         fs_full = fs + C
@@ -152,7 +152,7 @@ class CollabExplainer:
             
             # regress out conditioning set if nonempty
             if len(C_s) > 0:
-                model = self._get_model([C_s], order, C=[])
+                model = self.__get_model([C_s], order, C=[])
                 y_pred = model.predict(self.X_train.loc[:, C_s])
                 y_res = self.y_train - y_pred
             else:
@@ -160,7 +160,7 @@ class CollabExplainer:
                 
             # specify model and the allowed interactions
             if len(comb_s) > 1:
-                excluded_terms = CollabExplainer._get_excluded_terms(comb, order, C=C)
+                excluded_terms = CollabExplainer.__get_excluded_terms(comb, order, C=C)
                 model = self.Learner(exclude=excluded_terms)
             else:
                 model = self.Learner(exclude=None)
@@ -169,7 +169,7 @@ class CollabExplainer:
             self.models[key] = model
             return model
                 
-    def _assert_comb_valid(self, comb, C=[]):
+    def __assert_comb_valid(self, comb, C=[]):
         """
         Asserts that the combination contains two elements, that the features are in the columns, that the 
         two sets are disjoint. If an element is a string, it is converted to a list, such that always a list
@@ -190,19 +190,19 @@ class CollabExplainer:
         return comb_
                     
     def get(self, comb, C=[]):
-        comb = self._assert_comb_valid(comb)
-        comb_s = CollabExplainer._sort_comb(comb)
+        comb = self.__assert_comb_valid(comb)
+        comb_s = CollabExplainer.__sort_comb(comb)
         key = (comb_s, tuple(sorted(C)))
         if key in self.decomps.keys():
             res = self.decomps[key]
-            return self._adjust_order(comb, res)
+            return self.__adjust_order(comb, res)
         else:
             res = self.compute(list(comb_s), C=C)
             self.decomps[key] = res
             return res
         
     def compute(self, comb, order=2, C=[]):
-        comb = self._assert_comb_valid(comb)
+        comb = self.__assert_comb_valid(comb)
         return_names = self.RETURN_NAMES
         
         # comb = [f for gr in comb for f in gr]
@@ -213,16 +213,15 @@ class CollabExplainer:
         
         # get baseline
         if len(C) > 0:
-            b = self._get_model([C], order, C=[])
+            b = self.__get_model([C], order, C=[])
             b_pred = b.predict(self.X_test.loc[:, C])
         else:
             b_pred = 0
-        y_test_res = self.y_test - b_pred
-        
+        y_test_res = self.y_test - b_pred 
         var_y_res = np.var(y_test_res)
         
         start = time.time()
-        model_full = self._get_model([fs], order, C=C)
+        model_full = self.__get_model([fs], order, C=C)
         end = time.time()
         logging.info(f'Fitting full model took {end-start} seconds')
         # model_full = self.Learner(interactions=scipy.special.comb(len(all_fs), order))
@@ -230,7 +229,7 @@ class CollabExplainer:
         var_total = r2_score(y_test_res, model_full.predict(self.X_test[fs_full]))
 
         start = time.time()
-        model_order1 = self._get_model(comb, order, C=C)
+        model_order1 = self.__get_model(comb, order, C=C)
         end = time.time()
         logging.info(f'Fitting model without interactions between the groups took {end-start} seconds')        
         # model_order1 = self.Learner(interactions=terms_g)
@@ -238,7 +237,7 @@ class CollabExplainer:
         var_GAM = r2_score(y_test_res, model_order1.predict(self.X_test[fs_full]))
 
         start = time.time()
-        f1 = self._get_model([comb[0]], order, C=C)
+        f1 = self.__get_model([comb[0]], order, C=C)
         end = time.time()
         logging.info(f'Fitting model for group 1 took {end-start} seconds')
         # f1 = self.Learner(interactions=scipy.special.comb(len(comb[0]), order))
@@ -246,20 +245,44 @@ class CollabExplainer:
         var_f1 = r2_score(y_test_res, f1.predict(self.X_test[fs_0]))
 
         start = time.time()
-        f2 = self._get_model([comb[1]], order, C=C)
+        f2 = self.__get_model([comb[1]], order, C=C)
         end = time.time()
         logging.info(f'Fitting model for group 2 took {end-start} seconds')
         # f2 = self.Learner(interactions=scipy.special.comb(len(comb[1]), order))
         # f2.fit(self.X_train[comb[1]], self.y_train)
         var_f2 = r2_score(y_test_res, f2.predict(self.X_test[fs_1]))
 
-        terms_g1 = self._get_terms(fs_0, order) + comb[0] + C
-        terms_g2 = self._get_terms(fs_1, order) + comb[1]
-        g1 = model_order1.predict_components(self.X_test, terms_g1)
-        g2 = model_order1.predict_components(self.X_test, terms_g2)
-        # TODO orthogonalize g1 and g2 to C
+        # get the GAM components
+        terms_C = self.__get_terms(C, order) + C
+        terms_g1 = self.__get_terms(fs_0, order, exclude=terms_C) + comb[0]
+        terms_g2 = self.__get_terms(fs_1, order, exclude=terms_C) + comb[1]
+                
+        # get the GAM components
+        g1_test = model_order1.predict_components(self.X_test, terms_g1)
+        g2_test = model_order1.predict_components(self.X_test, terms_g2)        
         
-        cov_g1_g2 = np.cov(g1, g2)[0, 1]
+        # if C is not empty, we make the GAM components orthogonal to C to recover uniquness
+        if len(C) > 0:
+            g1_train = model_order1.predict_components(self.X_train, terms_g1)
+            g2_train = model_order1.predict_components(self.X_train, terms_g2)
+            
+            model_g1 = self.Learner()
+            model_g1.fit(self.X_train[C], g1_train)
+            g1_pred = model_g1.predict(self.X_test[C])
+            g1_res = g1_test - g1_pred
+            model_g2 = self.Learner()
+            model_g2.fit(self.X_train[C], g2_train)
+            g2_pred = model_g2.predict(self.X_test[C])
+            g2_res = g2_test - g2_pred
+            
+            gc_test = model_order1.predict_components(self.X_test, terms_C)
+            var_comp = np.var(g1_pred + g2_pred + gc_test) / np.var(g1_test + g2_test + gc_test)
+            logging.debug(f'Variance of GAM explained by X_C: {var_comp}')
+        else:
+            g1_res = g1_test
+            g2_res = g2_test
+                
+        cov_g1_g2 = np.cov(g1_res, g2_res)[0, 1]
         cov_g1_g2 = cov_g1_g2 / var_y_res
         additive_collab = (var_f1 + var_f2 - var_GAM)*-1
         additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
@@ -365,7 +388,7 @@ class CollabExplainer:
         return results    
     
     def hbarplot_comb(self, comb, C=[], ax=None, figsize=None, text=True):
-        comb = self._assert_comb_valid(comb)
+        comb = self.__assert_comb_valid(comb)
         if ax is None:
             f, ax = plt.subplots(figsize=figsize)
         with sns.axes_style('whitegrid'):
