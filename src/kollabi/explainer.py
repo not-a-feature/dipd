@@ -385,6 +385,18 @@ class CollabExplainer:
         results = pd.DataFrame(index=self.fs, columns=self.RETURN_NAMES)
         for feature in tqdm.tqdm(self.fs):
             results.loc[feature] = self.get_one_vs_rest(feature)
+        return results
+    
+    def get_pairs_vs_rest(self, fixed_feature):
+        """
+        For a fixed feature, computes pairwise decompositions conditional on the
+        respective remainder.
+        """
+        rest = [f for f in self.fs if f != fixed_feature]
+        results = pd.DataFrame(index=self.fs, columns=self.RETURN_NAMES)
+        for feature in tqdm.tqdm(rest):
+            C = [f for f in rest if f != feature]
+            results.loc[feature] = self.get([[fixed_feature], [feature]], C=C)
         return results    
     
     def hbarplot_comb(self, comb, C=[], ax=None, figsize=None, text=True):
@@ -454,6 +466,15 @@ class CollabExplainer:
                        explain_surplus=True, rest_feature=2)
         if savepath is not None:
             plt.savefig(savepath + f'forceplt_one_vs_rest.pdf')
+        return ax
+    
+    def forceplot_pairs_vs_rest(self, fixed_feature, figsize=(20, 10), split_additive=False, savepath=None):
+        res = self.get_pairs_vs_rest(fixed_feature)
+        data = res.transpose()
+        ax = forceplot(data, f'{fixed_feature} vs j | rest', figsize=figsize, split_additive=split_additive,
+                       explain_surplus=True, rest_feature=2)
+        if savepath is not None:
+            plt.savefig(savepath + f'forceplt_pairs_vs_rest.pdf')
         return ax
     
     def matrixplots(self, savepath=None):
