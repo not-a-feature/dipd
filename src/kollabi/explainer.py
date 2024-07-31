@@ -33,7 +33,7 @@ class CollabExplainer:
         verbose (bool, optional): Whether to print verbose output. Defaults to False.
     """
 
-    RETURN_NAMES = ['var_g1', 'var_g2', 'additive_collab_explv', 'additive_collab_cov', 'interactive_collab']
+    RETURN_NAMES = ['var_g1', 'var_g2', 'var_gC', 'additive_collab_explv', 'additive_collab_cov', 'interactive_collab']
 
     def __init__(self, df, target, learner, test_size=0.2, verbose=False) -> None:
         self.df = df
@@ -202,6 +202,16 @@ class CollabExplainer:
             return res
         
     def compute(self, comb, order=2, C=[]):
+        """
+        Computes decomposition for a combination comb conditional on
+        a group of features C. Uses GAMs of at most order `order`
+        to compute the decomposition.
+        
+        Args:
+            comb (list): A list of two lists of features.
+            order (int, optional): The maximum order of interactions. Defaults to 2.
+            C (list, optional): A list of features that are assumed to be known. Defaults to [].
+        """
         comb = self.__assert_comb_valid(comb)
         return_names = self.RETURN_NAMES
         
@@ -219,6 +229,7 @@ class CollabExplainer:
             b_pred = 0
         y_test_res = self.y_test - b_pred 
         var_y_res = np.var(y_test_res)
+        var_fC = np.var(b_pred) / var_y_res
         
         start = time.time()
         model_full = self.__get_model([fs], order, C=C)
@@ -299,8 +310,19 @@ class CollabExplainer:
 
             print('Cov(g1, g2): ', cov_g1_g2 / var_y_res)
             print('Additive Collaboration: ', additive_collab)
-                    
-        return pd.Series([var_f1, var_f2, additive_collab_wo_cov, -2*cov_g1_g2, interactive_collab], index=return_names) 
+         
+        # rescale to proportion of variance of Y 
+        if True:
+            var_y = np.var(self.y_test)
+            factor = var_y_res / var_y
+            var_f1 *= factor
+            var_f2 *= factor
+            additive_collab *= factor
+            cov_g1_g2 *= factor
+            interactive_collab *= factor
+            var_fC *= factor
+                   
+        return pd.Series([var_f1, var_f2, var_fC, additive_collab_wo_cov, -2*cov_g1_g2, interactive_collab], index=return_names) 
         
     def get_all_pairwise(self, only_precomputed=False, return_matrixs=False):
         '''
@@ -329,10 +351,10 @@ class CollabExplainer:
                 vars_bivarivate.loc[comb[1], comb[1]] = res[self.RETURN_NAMES[1]]  
                 # rest                              
                 vars_bivarivate.loc[comb[0], comb[1]] = res.sum(axis=0)
-                additive_collab.loc[comb[0], comb[1]] = res[self.RETURN_NAMES[2]] + res[self.RETURN_NAMES[3]]
-                neg2_cov_g1_g2.loc[comb[0], comb[1]] = res[self.RETURN_NAMES[3]]
-                additive_collab_wo_cov.loc[comb[0], comb[1]] = res[self.RETURN_NAMES[2]]
-                synergetic_collab.loc[comb[0], comb[1]] = res[self.RETURN_NAMES[4]]
+                additive_collab.loc[comb[0], comb[1]] = res[self.RETURN_NAMES[3]] + res[self.RETURN_NAMES[4]]
+                neg2_cov_g1_g2.loc[comb[0], comb[1]] = res[self.RETURN_NAMES[4]]
+                additive_collab_wo_cov.loc[comb[0], comb[1]] = res[self.RETURN_NAMES[3]]
+                synergetic_collab.loc[comb[0], comb[1]] = res[self.RETURN_NAMES[5]]
                 # make symmetric
                 vars_bivarivate.loc[comb[1], comb[0]] = vars_bivarivate.loc[comb[0], comb[1]]
                 additive_collab.loc[comb[1], comb[0]] = additive_collab.loc[comb[0], comb[1]]
@@ -393,7 +415,7 @@ class CollabExplainer:
         respective remainder.
         """
         rest = [f for f in self.fs if f != fixed_feature]
-        results = pd.DataFrame(index=self.fs, columns=self.RETURN_NAMES)
+        results = pd.DataFrame(index=rest, columns=self.RETURN_NAMES)
         for feature in tqdm.tqdm(rest):
             C = [f for f in rest if f != feature]
             results.loc[feature] = self.get([[fixed_feature], [feature]], C=C)
@@ -472,7 +494,7 @@ class CollabExplainer:
         res = self.get_pairs_vs_rest(fixed_feature)
         data = res.transpose()
         ax = forceplot(data, f'{fixed_feature} vs j | rest', figsize=figsize, split_additive=split_additive,
-                       explain_surplus=True, rest_feature=2)
+                       explain_collab=True)
         if savepath is not None:
             plt.savefig(savepath + f'forceplt_pairs_vs_rest.pdf')
         return ax
