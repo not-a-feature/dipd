@@ -108,7 +108,8 @@ class CollabExplainer:
         
     @staticmethod
     def __get_terms(fs, order, exclude=[]):
-        terms = sum([list(itertools.combinations(fs, d)) for d in range(2, order+1)], [])
+        fs_s = sorted(fs)
+        terms = sum([list(itertools.combinations(fs_s, d)) for d in range(2, order+1)], [])
         terms = [term for term in terms if term not in exclude]
         # if order >= 1:
         #     terms += fs

@@ -48,7 +48,9 @@ import pandas as pd
 import statsmodels.formula.api as smf
 
 class LinearGAM(Predictor):
-    def __init__(self, interactions=0, exclude=[]):
+    def __init__(self, interactions=None, exclude=[]):
+        if exclude is None:
+            exclude = []
         super().__init__(interactions=interactions, exclude=exclude)
         self.model = None
         
@@ -58,7 +60,7 @@ class LinearGAM(Predictor):
             pairs = list(itertools.combinations(X.columns, 2))
             pairs = [sorted(list(p)) for p in pairs]
             if self.exclude is not None:
-                pairs = [p for p in pairs if p not in self.exclude]
+                pairs = [p for p in pairs if tuple(p) not in self.exclude]
             terms += pairs
         return terms
     
@@ -91,17 +93,19 @@ class LinearGAM(Predictor):
         component_s = component
         if isinstance(component, list):
             component_s = sorted(component)
-        assert component_s in self.terms
-        if isinstance(component_s, list):
-            term = ':'.join(component_s)
+        if component_s in self.terms:
+            if isinstance(component_s, list):
+                term = ':'.join(component_s)
+            else:
+                term = component_s
+            coef = self.model.params[term]
+            if isinstance(component_s, list):
+                assert len(component_s) == 2, 'only pairwise interactions supported'
+                return coef * X.loc[:, component_s[0]] * X.loc[:, component_s[1]]
+            else:
+                return coef * X.loc[:, component_s]
         else:
-            term = component_s
-        coef = self.model.params[term]
-        if isinstance(component_s, list):
-            assert len(component_s) == 2, 'only pairwise interactions supported'
-            return coef * X.loc[:, component_s[0]] * X.loc[:, component_s[1]]
-        else:
-            return coef * X.loc[:, component_s]
+            return 0
 
 from interpret.utils._clean_x import preclean_X
 from interpret.glassbox._ebm._bin import ebm_eval_terms
