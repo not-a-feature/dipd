@@ -2,6 +2,8 @@ import pickle
 import numpy as np
 import warnings
 
+import logging
+
 warnings.filterwarnings("ignore", category=UserWarning, lineno=738, message='Missing values detected.')
 
 from interpret.glassbox import ExplainableBoostingRegressor
@@ -25,11 +27,13 @@ class Predictor:
     def save(self, path):
         pass
 
-    def predict(self, X):
-        return self.model.predict(X)
+    def predict(self, X, **kwargs):
+        fs = sorted(list(X.columns))
+        return self.model.predict(X.loc[:, fs], **kwargs)
 
     def fit(self, X, y):
-        self.model.fit(X, y)
+        fs = sorted(list(X.columns))
+        self.model.fit(X.loc[:, fs], y)
 
     def predict_component(self, X, component):
         pass
@@ -38,32 +42,70 @@ class Predictor:
         return sum([self.predict_component(X, c) for c in components])
 
 
-from sklearn.linear_model import LinearRegression, Ridge
+import math
+import itertools
+import pandas as pd
+import statsmodels.formula.api as smf
 
-
-class BivariateLinearPredictor(Predictor):
-    def __init__(self, type='ols', interactions=0):
-        super().__init__(interactions=interactions)
-        assert interactions == 0, 'Higher order interactions not supported for this model class'
-        self.type = type
-        models = {
-            'ols': LinearRegression,
-            'ridge': Ridge
-        }
-        if self.type in models.keys():
-            self.model = models[self.type]()
-        else:
-            raise NotImplementedError('Only {} supported for now'.format(', '.join(models.keys())))
-
+class LinearGAM(Predictor):
+    def __init__(self, interactions=None, exclude=[]):
+        if exclude is None:
+            exclude = []
+        super().__init__(interactions=interactions, exclude=exclude)
+        self.model = None
+        
+    def get_terms(self, X):
+        terms = list(X.columns)
+        if self.interactions > 0:
+            pairs = list(itertools.combinations(X.columns, 2))
+            pairs = [sorted(list(p)) for p in pairs]
+            if self.exclude is not None:
+                pairs = [p for p in pairs if tuple(p) not in self.exclude]
+            terms += pairs
+        return terms
+    
+    def __check_interactions(self, X, replace_none=True):
+        n_interactions = math.comb(X.shape[1], 2)
+        n_interactions = n_interactions - len(self.exclude)
+        
+        if self.interactions is None and replace_none:
+            self.interactions = n_interactions
+        
+        assert self.interactions == 0 or self.interactions == n_interactions
+        
+    @staticmethod
+    def __get_formula(terms):
+        formula = 'y ~'
+        for term in terms:
+            if isinstance(term, list):
+                term = ' * '.join(term)
+            formula += ' + ' + term
+        return formula
+        
+    def fit(self, X, y):        
+        self.__check_interactions(X, replace_none=True)
+        self.terms = self.get_terms(X)
+        self.formula = self.__get_formula(self.terms)
+        self.model = smf.ols(formula=self.formula,
+                             data=pd.concat([X, y], axis=1)).fit()
+            
     def predict_component(self, X, component):
-        if isinstance(component, str):
-            assert component in X.columns
-            variable_index = X.columns.tolist().index(component)
-            coef = self.model.coef_[variable_index]
-            return coef * X.loc[:, component]
+        component_s = component
+        if isinstance(component, list):
+            component_s = sorted(component)
+        if component_s in self.terms:
+            if isinstance(component_s, list):
+                term = ':'.join(component_s)
+            else:
+                term = component_s
+            coef = self.model.params[term]
+            if isinstance(component_s, list):
+                assert len(component_s) == 2, 'only pairwise interactions supported'
+                return coef * X.loc[:, component_s[0]] * X.loc[:, component_s[1]]
+            else:
+                return coef * X.loc[:, component_s]
         else:
-            raise NotImplementedError('No higher order interactions supported for this model class')
-
+            return 0
 
 from interpret.utils._clean_x import preclean_X
 from interpret.glassbox._ebm._bin import ebm_eval_terms
@@ -73,7 +115,7 @@ class EBM(Predictor):
     def __init__(self, interactions=0.95, exclude=None):
         super().__init__(interactions=interactions, exclude=exclude)
         self.model = ExplainableBoostingRegressor(interactions=interactions, exclude=exclude)
-                
+                        
     def predict_components(self, X, components):
         """
         Due to limitations of the interpret package we can query multiple components at once,
@@ -96,8 +138,8 @@ class EBM(Predictor):
                 comp_names.append(comp_name)
                 comp_ixs.append(comp_index)
             except Exception as err:
-                print(err)
-                print(f'Probably, component {comp_name} was not found in the model')
+                logging.debug(err)
+                logging.debug(f'Probably, component {comp_name} was not found in the model')
             
         comp_ixs = np.array(comp_ixs).astype(int)
         
@@ -115,7 +157,7 @@ class EBM(Predictor):
             [self.model.term_features_[comp_ix] for comp_ix in comp_ixs],
         )        
         
-        return np.mean(explanations, axis=1)
+        return np.sum(explanations, axis=1)
     
     def predict_component(self, X, component):
         return self.predict_components(X, [component])

@@ -9,15 +9,18 @@ idx = pd.IndexSlice
 
 FORCEPLOT_COLOR_DICT = {'additive_collab': '#9F76F5', 'additive_collab_explv': '#C776F5',
                         'additive_collab_cov': '#7677F5', 'interactive_collab': '#7AF58D',
-                        'var_g2': 'gray', 'var_g1': 'lightgray', 'total': 'black'}
+                        'var_g2': 'gray', 'var_g1': 'lightgray', 'total': 'black',
+                        'var_gC': 'whitesmoke'}
     
 
 def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, color_dict=None,
-              explain_surplus=False, rest_feature=2):
+              explain_surplus=False, rest_feature=2, explain_collab=False):
     """
     Forecplot that takes the results of decompositions and plots them as a stacked bar plot.
     data: pd.DataFrame with the decomposition scores as index and the columns as the features
     """
+    assert not (explain_collab and explain_surplus), 'Cannot explain both collab and surplus'
+    
     BAR_WIDTH = 0.6  # determines width of the bars
     HLINE_WIDTH = 0.6
     SEPARATOR_IDENT_PROP = 0.03
@@ -43,6 +46,8 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
     normal_scores = [col for col in list(data.index) if col not in split_scores] # names of the decomposition score except additive split scores
     if explain_surplus:
         normal_scores = [col for col in normal_scores if f'{rest_feature}' not in col]
+    if explain_collab:
+        normal_scores = [col for col in normal_scores if 'collab' in col]
     total_scores = data.loc[normal_scores, :].sum(axis=0)
     data = data[total_scores.sort_values(ascending=False).index]
     total_scores = total_scores[data.columns]
