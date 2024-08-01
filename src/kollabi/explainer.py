@@ -12,7 +12,7 @@ import matplotlib.patches as mpatches
 import seaborn as sns
 
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import r2_score
+from sklearn.metrics import mean_squared_error
 
 from kollabi.plots import forceplot
 
@@ -153,11 +153,11 @@ class CollabExplainer:
             
             # regress out conditioning set if nonempty
             if len(C_s) > 0:
-                model = self.__get_model([C_s], order, C=[])
-                y_pred = model.predict(self.X_train.loc[:, C_s])
-                y_res = self.y_train - y_pred
+                model_C = self.__get_model([C_s], order, C=[])
+                model_C_pred_train = model_C.predict(self.X_train.loc[:, C_s])
+                y_res_C_train = self.y_train - model_C_pred_train
             else:
-                y_res = self.y_train
+                y_res_C_train = self.y_train
                 
             # specify model and the allowed interactions
             if len(comb_s) > 1:
@@ -166,7 +166,7 @@ class CollabExplainer:
             else:
                 model = self.Learner(exclude=None)
                 
-            model.fit(self.X_train.loc[:, fs_full], y_res)
+            model.fit(self.X_train.loc[:, fs_full], y_res_C_train)
             self.models[key] = model
             return model
                 
@@ -190,7 +190,7 @@ class CollabExplainer:
         assert len(set(comb_[0]).union(set(comb_[1])).intersection(set(C))) == 0, 'the conditioning set must be disjoint from the two sets'
         return comb_
                     
-    def get(self, comb, C=[]):
+    def get(self, comb, order=2, C=[]):
         comb = self.__assert_comb_valid(comb)
         comb_s = CollabExplainer.__sort_comb(comb)
         key = (comb_s, tuple(sorted(C)))
@@ -198,11 +198,11 @@ class CollabExplainer:
             res = self.decomps[key]
             return self.__adjust_order(comb, res)
         else:
-            res = self.compute(list(comb_s), C=C)
+            res = self.__compute(list(comb_s), order=order, C=C)
             self.decomps[key] = res
             return res
         
-    def compute(self, comb, order=2, C=[]):
+    def __compute(self, comb, order=2, C=[]):
         """
         Computes decomposition for a combination comb conditional on
         a group of features C. Uses GAMs of at most order `order`
@@ -224,45 +224,23 @@ class CollabExplainer:
         
         # get baseline
         if len(C) > 0:
-            b = self.__get_model([C], order, C=[])
-            b_pred = b.predict(self.X_test.loc[:, C])
+            fC = self.__get_model([C], order, C=[])
+            fC_pred_test = fC.predict(self.X_test.loc[:, C])
         else:
-            b_pred = 0
-        y_test_res = self.y_test - b_pred 
-        var_y_res = np.var(y_test_res)
-        var_fC = np.var(b_pred) / var_y_res
+            fC_pred_test = np.repeat(0, self.y_test.shape)
         
-        start = time.time()
-        model_full = self.__get_model([fs], order, C=C)
-        end = time.time()
-        logging.info(f'Fitting full model took {end-start} seconds')
-        # model_full = self.Learner(interactions=scipy.special.comb(len(all_fs), order))
-        # model_full.fit(self.X_train.loc[:, all_fs], self.y_train)
-        var_total = r2_score(y_test_res, model_full.predict(self.X_test[fs_full]))
-
-        start = time.time()
-        model_order1 = self.__get_model(comb, order, C=C)
-        end = time.time()
-        logging.info(f'Fitting model without interactions between the groups took {end-start} seconds')        
-        # model_order1 = self.Learner(interactions=terms_g)
-        # model_order1.fit(self.X_train.loc[:, all_fs], self.y_train)
-        var_GAM = r2_score(y_test_res, model_order1.predict(self.X_test[fs_full]))
-
-        start = time.time()
+        v_f_empty = mean_squared_error(self.y_test, np.repeat(np.mean(self.y_train), self.y_test.shape))
+        v_fC = v_f_empty - mean_squared_error(self.y_test, fC_pred_test)
+                
+        f = self.__get_model([fs], order, C=C)
+        f_GAM = self.__get_model(comb, order, C=C)
         f1 = self.__get_model([comb[0]], order, C=C)
-        end = time.time()
-        logging.info(f'Fitting model for group 1 took {end-start} seconds')
-        # f1 = self.Learner(interactions=scipy.special.comb(len(comb[0]), order))
-        # f1.fit(self.X_train[comb[0]], self.y_train)
-        var_f1 = r2_score(y_test_res, f1.predict(self.X_test[fs_0]))
-
-        start = time.time()
         f2 = self.__get_model([comb[1]], order, C=C)
-        end = time.time()
-        logging.info(f'Fitting model for group 2 took {end-start} seconds')
-        # f2 = self.Learner(interactions=scipy.special.comb(len(comb[1]), order))
-        # f2.fit(self.X_train[comb[1]], self.y_train)
-        var_f2 = r2_score(y_test_res, f2.predict(self.X_test[fs_1]))
+
+        v_f = v_f_empty - mean_squared_error(self.y_test, f.predict(self.X_test[fs_full]) + fC_pred_test)
+        v_f_GAM = v_f_empty - mean_squared_error(self.y_test, f_GAM.predict(self.X_test[fs_full]) + fC_pred_test)
+        v_f1 = v_f_empty - mean_squared_error(self.y_test, f1.predict(self.X_test[fs_0]) + fC_pred_test)
+        v_f2 = v_f_empty - mean_squared_error(self.y_test, f2.predict(self.X_test[fs_1]) + fC_pred_test)
 
         # get the GAM components
         terms_C = self.__get_terms(C, order) + C
@@ -270,24 +248,27 @@ class CollabExplainer:
         terms_g2 = self.__get_terms(fs_1, order, exclude=terms_C) + comb[1]
                 
         # get the GAM components
-        g1_test = model_order1.predict_components(self.X_test, terms_g1)
-        g2_test = model_order1.predict_components(self.X_test, terms_g2)        
+        g1_test = f_GAM.predict_components(self.X_test, terms_g1)
+        g2_test = f_GAM.predict_components(self.X_test, terms_g2)        
         
         # if C is not empty, we make the GAM components orthogonal to C to recover uniquness
         if len(C) > 0:
-            g1_train = model_order1.predict_components(self.X_train, terms_g1)
-            g2_train = model_order1.predict_components(self.X_train, terms_g2)
+            g1_train = f_GAM.predict_components(self.X_train, terms_g1)
+            g2_train = f_GAM.predict_components(self.X_train, terms_g2)
             
+            # regressing X_C out of g1
             model_g1 = self.Learner()
             model_g1.fit(self.X_train[C], g1_train)
             g1_pred = model_g1.predict(self.X_test[C])
             g1_res = g1_test - g1_pred
+            
+            # regressing X_C out of g2
             model_g2 = self.Learner()
             model_g2.fit(self.X_train[C], g2_train)
             g2_pred = model_g2.predict(self.X_test[C])
             g2_res = g2_test - g2_pred
             
-            gc_test = model_order1.predict_components(self.X_test, terms_C)
+            gc_test = f_GAM.predict_components(self.X_test, terms_C)
             var_comp = np.var(g1_pred + g2_pred + gc_test) / np.var(g1_test + g2_test + gc_test)
             logging.debug(f'Variance of GAM explained by X_C: {var_comp}')
         else:
@@ -295,35 +276,28 @@ class CollabExplainer:
             g2_res = g2_test
                 
         cov_g1_g2 = np.cov(g1_res, g2_res)[0, 1]
-        cov_g1_g2 = cov_g1_g2 / var_y_res
-        additive_collab = (var_f1 + var_f2 - var_GAM)*-1
+        additive_collab = v_f_GAM - v_f1 - v_f2 + v_fC
         additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
-        interactive_collab = var_total - var_GAM
+        interactive_collab = v_f - v_f_GAM
 
         if self.verbose:
-            print(comb)
-            print('total variance Y ', var_y_res)
-            print('test v(1 cup 2)', var_total)
-            print('training v(1 cup 2): ', r2_score(self.y_train, model_full.predict(self.X_train)))
-            print('Interactive Collaboration: ', interactive_collab)
-            print('v(', comb[0], '): ', var_f1)
-            print('v(', comb[1], '): ', var_f2)
-
-            print('Cov(g1, g2): ', cov_g1_g2 / var_y_res)
-            print('Additive Collaboration: ', additive_collab)
-         
+            print(f'comb: {comb}, C: {C}')
+            print(f'v(comb + C): {v_f} \n v(C): {v_fC} \n  v(comb[0] + C): {v_f1} \n v(comb[1] + C): {v_f2}')
+            print(f'Additive Collaboration: {additive_collab} \n Interactive Collaboration: {interactive_collab}')
+            print(f'Additive wo Cov: {additive_collab_wo_cov} \n -2*cov(g1, g2): {-2*cov_g1_g2}')
+                     
         # rescale to proportion of variance of Y 
-        if True:
-            var_y = np.var(self.y_test)
-            factor = var_y_res / var_y
-            var_f1 *= factor
-            var_f2 *= factor
-            additive_collab *= factor
-            cov_g1_g2 *= factor
-            interactive_collab *= factor
-            var_fC *= factor
+        var_y = np.var(self.y_test)
+        factor = 1 / var_y
+        v_f1 *= factor
+        v_f2 *= factor
+        additive_collab *= factor
+        additive_collab_wo_cov *= factor
+        cov_g1_g2 *= factor
+        interactive_collab *= factor
+        v_fC *= factor
                    
-        return pd.Series([var_f1, var_f2, var_fC, additive_collab_wo_cov, -2*cov_g1_g2, interactive_collab], index=return_names) 
+        return pd.Series([v_f1, v_f2, v_fC, additive_collab_wo_cov, -2*cov_g1_g2, interactive_collab], index=return_names) 
         
     def get_all_pairwise(self, only_precomputed=False, return_matrixs=False):
         '''
