@@ -15,6 +15,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
 from kollabi.plots import forceplot
+from kollabi.explanation import Explanation, SurplusExplanation, CollabExplanation
 
 interpret_logger = logging.getLogger('interpret')
 interpret_logger.setLevel(logging.WARNING)
@@ -365,7 +366,8 @@ class CollabExplainer:
             res_flip = res.rename({self.RETURN_NAMES[0]: self.RETURN_NAMES[1],
                                    self.RETURN_NAMES[1]: self.RETURN_NAMES[0]})
             results.loc[tuple(comb[::-1]), res_flip.index] = res_flip
-        return results
+        ex = SurplusExplanation(f'{feature} vs j', results)
+        return ex
     
     def get_one_vs_rest(self, feature):
         """
@@ -373,7 +375,8 @@ class CollabExplainer:
         """
         rest = [col for col in self.fs if col != feature]
         res = self.get([feature, rest])
-        return res
+        ex = SurplusExplanation(f'{feature} vs rest', res)
+        return ex
     
     def get_all_one_vs_rest(self):
         """
@@ -381,8 +384,8 @@ class CollabExplainer:
         """
         results = pd.DataFrame(index=self.fs, columns=self.RETURN_NAMES)
         for feature in tqdm.tqdm(self.fs):
-            results.loc[feature] = self.get_one_vs_rest(feature)
-        return results
+            results.loc[feature] = self.get_one_vs_rest(feature).scores
+        return SurplusExplanation('one vs rest', results)
     
     def get_pairs_vs_rest(self, fixed_feature):
         """
@@ -394,107 +397,121 @@ class CollabExplainer:
         for feature in tqdm.tqdm(rest):
             C = [f for f in rest if f != feature]
             results.loc[feature] = self.get([[fixed_feature], [feature]], C=C)
-        return results    
+        ex = CollabExplanation(f'{fixed_feature} vs j | rest', results)
+        return ex
     
-    def hbarplot_comb(self, comb, C=[], ax=None, figsize=None, text=True):
-        comb = self.__assert_comb_valid(comb)
-        if ax is None:
-            f, ax = plt.subplots(figsize=figsize)
-        with sns.axes_style('whitegrid'):
-            d = self.get(comb, C=C)
-            d.plot(kind='barh', ax=ax, xlabel=None, ylabel=None, use_index=False)
-            plt.title(f'{comb}')
-            sns.despine(left=True, bottom=True, ax=ax)
-            return ax
-        
-    def pairplot(self, figsize=(30, 30), fs=None):
-        # Create the grid of subplots
-        if fs is None:
-            fs = self.fs
-        num_features = len(fs)
-        fig, axes = plt.subplots(num_features, num_features, figsize=figsize)
-
-        # Iterate over all combinations of the features
-        for i, feature_x in enumerate(fs):
-            for j, feature_y in enumerate(fs):
-                if i != j:
-                    ax = axes[i, j]
-                    self.hbarplot([feature_x, feature_y], ax=ax, text=False)
-        # Adjust layout
-        plt.tight_layout()
-        return fig, axes
-    
-    def forceplot_onefixed(self, feature, figsize=None, ax=None, split_additive=False):
-        res = self.get_all_pairwise_onefixed(feature)
-        data = res.loc[idx[feature, :], :].reset_index().drop('feature1', axis=1).set_index('feature2').transpose()
-        ax = forceplot(data, feature, figsize=figsize, ax=ax, split_additive=split_additive)
-        return ax
-
-    def forceplots_onefixed(self, figsize=(20, 10), split_additive=False, nrows=1, savepath=None):
-        nplots = math.ceil(len(self.fs) / nrows)
-        axss = []
-        for i in range(nplots):
-            # create a figure with #features subplots
-            fig, axs = plt.subplots(nrows, 1, figsize=figsize)
-            if nrows == 1:
-                axs = [axs]
+    def get_one_vs_rest_cond_one(self, fixed_feature):
+        rest = [f for f in self.fs if f != fixed_feature]
+        one_vs_rest = self.get([fixed_feature, rest])
+        results = pd.DataFrame(index=rest, columns=self.RETURN_NAMES)
+        for feature in tqdm.tqdm(rest):
+            R = [f for f in rest if f != feature]
+            if len(R) == 0:
+                raise ValueError('The rest set must contain at least one feature')
             else:
-                axs = axs.flatten()
+                results.loc[feature] = one_vs_rest - self.get([fixed_feature, R], C=[feature])
+        ex = CollabExplanation(f'{fixed_feature} vs rest | j', results)
+        return ex
+    
+    # def hbarplot_comb(self, comb, C=[], ax=None, figsize=None, text=True):
+    #     comb = self.__assert_comb_valid(comb)
+    #     if ax is None:
+    #         f, ax = plt.subplots(figsize=figsize)
+    #     with sns.axes_style('whitegrid'):
+    #         d = self.get(comb, C=C)
+    #         d.plot(kind='barh', ax=ax, xlabel=None, ylabel=None, use_index=False)
+    #         plt.title(f'{comb}')
+    #         sns.despine(left=True, bottom=True, ax=ax)
+    #         return ax
+        
+    # def pairplot(self, figsize=(30, 30), fs=None):
+    #     # Create the grid of subplots
+    #     if fs is None:
+    #         fs = self.fs
+    #     num_features = len(fs)
+    #     fig, axes = plt.subplots(num_features, num_features, figsize=figsize)
+
+    #     # Iterate over all combinations of the features
+    #     for i, feature_x in enumerate(fs):
+    #         for j, feature_y in enumerate(fs):
+    #             if i != j:
+    #                 ax = axes[i, j]
+    #                 self.hbarplot([feature_x, feature_y], ax=ax, text=False)
+    #     # Adjust layout
+    #     plt.tight_layout()
+    #     return fig, axes
+    
+    # def forceplot_onefixed(self, feature, figsize=None, ax=None, split_additive=False):
+    #     res = self.get_all_pairwise_onefixed(feature)
+    #     data = res.loc[idx[feature, :], :].reset_index().drop('feature1', axis=1).set_index('feature2').transpose()
+    #     ax = forceplot(data, feature, figsize=figsize, ax=ax, split_additive=split_additive)
+    #     return ax
+
+    # def forceplots_onefixed(self, figsize=(20, 10), split_additive=False, nrows=1, savepath=None):
+    #     nplots = math.ceil(len(self.fs) / nrows)
+    #     axss = []
+    #     for i in range(nplots):
+    #         # create a figure with #features subplots
+    #         fig, axs = plt.subplots(nrows, 1, figsize=figsize)
+    #         if nrows == 1:
+    #             axs = [axs]
+    #         else:
+    #             axs = axs.flatten()
             
-            fs = self.fs[i*nrows:(i+1)*nrows]
-            for feature, ax in tqdm.tqdm(zip(fs, axs)):
-                # handle logging
-                class_level = logging.getLogger('CollabExplainer').getEffectiveLevel()
-                logging.getLogger('CollabExplainer').setLevel(logging.WARNING)
-                # call plot method
-                self.forceplot_onefixed(feature, ax=ax, split_additive=split_additive)
-                # handle logging
-                logging.getLogger('CollabExplainer').setLevel(class_level)
-            plt.tight_layout()
-            if savepath is not None:
-                plt.savefig(savepath + f'forceplts_{fs}.pdf')
-            axss.append(axs)
-        return axss
+    #         fs = self.fs[i*nrows:(i+1)*nrows]
+    #         for feature, ax in tqdm.tqdm(zip(fs, axs)):
+    #             # handle logging
+    #             class_level = logging.getLogger('CollabExplainer').getEffectiveLevel()
+    #             logging.getLogger('CollabExplainer').setLevel(logging.WARNING)
+    #             # call plot method
+    #             self.forceplot_onefixed(feature, ax=ax, split_additive=split_additive)
+    #             # handle logging
+    #             logging.getLogger('CollabExplainer').setLevel(class_level)
+    #         plt.tight_layout()
+    #         if savepath is not None:
+    #             plt.savefig(savepath + f'forceplts_{fs}.pdf')
+    #         axss.append(axs)
+    #     return axss
     
-    def forceplot_one_vs_rest(self, figsize=(20, 10), split_additive=False, savepath=None):
-        res = self.get_all_one_vs_rest()
-        data = res.transpose()
-        ax = forceplot(data, 'one_vs_rest', figsize=figsize, split_additive=split_additive,
-                       explain_surplus=True, rest_feature=2)
-        if savepath is not None:
-            plt.savefig(savepath + f'forceplt_one_vs_rest.pdf')
-        return ax
+    # def forceplot_one_vs_rest(self, figsize=(20, 10), split_additive=False, savepath=None):
+    #     res = self.get_all_one_vs_rest()
+    #     data = res.transpose()
+    #     ax = forceplot(data, 'one_vs_rest', figsize=figsize, split_additive=split_additive,
+    #                    explain_surplus=True, rest_feature=2)
+    #     if savepath is not None:
+    #         plt.savefig(savepath + f'forceplt_one_vs_rest.pdf')
+    #     return ax
     
-    def forceplot_pairs_vs_rest(self, fixed_feature, figsize=(20, 10), split_additive=False, savepath=None):
-        res = self.get_pairs_vs_rest(fixed_feature)
-        data = res.transpose()
-        ax = forceplot(data, f'{fixed_feature} vs j | rest', figsize=figsize, split_additive=split_additive,
-                       explain_collab=True)
-        if savepath is not None:
-            plt.savefig(savepath + f'forceplt_pairs_vs_rest.pdf')
-        return ax
+    # def forceplot_pairs_vs_rest(self, fixed_feature, figsize=(20, 10), split_additive=False, savepath=None):
+    #     res = self.get_pairs_vs_rest(fixed_feature)
+    #     data = res.transpose()
+    #     ax = forceplot(data, f'{fixed_feature} vs j | rest', figsize=figsize, split_additive=split_additive,
+    #                    explain_collab=True)
+    #     if savepath is not None:
+    #         plt.savefig(savepath + f'forceplt_pairs_vs_rest.pdf')
+    #     return ax
     
-    def matrixplots(self, savepath=None):
-        tpl = self.get_all_pairwise(return_matrixs=True)
-        vars_bivarivate, additive_collab, synergetic_collab, neg2_cov_g1_g2, _ = tpl
+    # def matrixplots(self, savepath=None):
+    #     tpl = self.get_all_pairwise(return_matrixs=True)
+    #     vars_bivarivate, additive_collab, synergetic_collab, neg2_cov_g1_g2, _ = tpl
         
-        cmap = sns.diverging_palette(250, 10, s=80, l=55, as_cmap=True)
+    #     cmap = sns.diverging_palette(250, 10, s=80, l=55, as_cmap=True)
         
-        fig, axs = plt.subplots(2, 2, figsize=(30, 20))
-        sns.heatmap(vars_bivarivate, annot=True, ax=axs[0, 0], vmin=-1, vmax=1, center=0, cmap=cmap)
-        axs[0, 0].set_title('Bivariate variance')
-        sns.heatmap(additive_collab, annot=True, ax=axs[1, 0], vmin=-1, vmax=1, center=0, cmap=cmap)
-        axs[1, 0].set_title('Additive Collaboration')
-        sns.heatmap(synergetic_collab, annot=True, ax=axs[1, 1], vmin=-1, vmax=1, center=0, cmap=cmap)
-        axs[1, 1].set_title('Interactive Collaboration')
-        sns.heatmap(neg2_cov_g1_g2, annot=True, ax=axs[0, 1], vmin=-1, vmax=1, center=0, cmap=cmap)
-        axs[0, 1].set_title('Negative Covariance')
-        # sns.heatmap(additive_collab_wo_cov, annot=True, ax=axs[1, 2])
-        # axs[1, 2].set_title('Additive Collaboration without Covariance')
-        plt.tight_layout()
-        if savepath is not None:
-            plt.savefig(savepath + 'matrixplots.pdf')
-        return axs
+    #     fig, axs = plt.subplots(2, 2, figsize=(30, 20))
+    #     sns.heatmap(vars_bivarivate, annot=True, ax=axs[0, 0], vmin=-1, vmax=1, center=0, cmap=cmap)
+    #     axs[0, 0].set_title('Bivariate variance')
+    #     sns.heatmap(additive_collab, annot=True, ax=axs[1, 0], vmin=-1, vmax=1, center=0, cmap=cmap)
+    #     axs[1, 0].set_title('Additive Collaboration')
+    #     sns.heatmap(synergetic_collab, annot=True, ax=axs[1, 1], vmin=-1, vmax=1, center=0, cmap=cmap)
+    #     axs[1, 1].set_title('Interactive Collaboration')
+    #     sns.heatmap(neg2_cov_g1_g2, annot=True, ax=axs[0, 1], vmin=-1, vmax=1, center=0, cmap=cmap)
+    #     axs[0, 1].set_title('Negative Covariance')
+    #     # sns.heatmap(additive_collab_wo_cov, annot=True, ax=axs[1, 2])
+    #     # axs[1, 2].set_title('Additive Collaboration without Covariance')
+    #     plt.tight_layout()
+    #     if savepath is not None:
+    #         plt.savefig(savepath + 'matrixplots.pdf')
+    #     return axs
         
     def save(self, filepath):
         results = self.get_all_pairwise(only_precomputed=True)
