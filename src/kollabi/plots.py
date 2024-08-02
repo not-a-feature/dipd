@@ -9,8 +9,8 @@ idx = pd.IndexSlice
 
 FORCEPLOT_COLOR_DICT = {'additive_collab': '#9F76F5', 'additive_collab_explv': '#C776F5',
                         'additive_collab_cov': '#7677F5', 'interactive_collab': '#7AF58D',
-                        'var_g2': 'gray', 'var_g1': 'lightgray', 'total': 'black',
-                        'var_gC': 'whitesmoke'}
+                        'var_g2': 'gray', 'var_g1': 'darkgrey', 'total': 'black',
+                        'var_gC': 'lightgrey'}
     
 
 def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, color_dict=None,
