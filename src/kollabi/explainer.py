@@ -68,11 +68,7 @@ class CollabExplainer:
             self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.df[self.fs], self.df[self.target],
                                                                                     test_size=test_size)
             self.decomps.clear()
-            
-    # @staticmethod
-    # def _sort_fs(fs):
-    #     return tuple(sorted(fs))
-        
+                    
     @staticmethod
     def __sort_comb(comb, inner_only=False):
         """
@@ -347,7 +343,8 @@ class CollabExplainer:
                 results.loc[tuple(comb), res.index] = res
                 res2 = self.get(comb[::-1])
                 results.loc[tuple(comb[::-1]), res2.index] = res2
-            return results
+            ex = Explanation('all pairwise', results)
+            return ex
         
     def get_all_pairwise_onefixed(self, feature):
         '''
@@ -366,10 +363,10 @@ class CollabExplainer:
             res_flip = res.rename({self.RETURN_NAMES[0]: self.RETURN_NAMES[1],
                                    self.RETURN_NAMES[1]: self.RETURN_NAMES[0]})
             results.loc[tuple(comb[::-1]), res_flip.index] = res_flip
-        ex = SurplusExplanation(f'{feature} vs j', results)
+        ex = SurplusExplanation(f'{feature} vs j', results, feature)
         return ex
     
-    def get_one_vs_rest(self, feature):
+    def get_loo(self, feature):
         """
         Computes one vs rest decomposition for a given feature
         """
@@ -378,16 +375,16 @@ class CollabExplainer:
         ex = SurplusExplanation(f'{feature} vs rest', res)
         return ex
     
-    def get_all_one_vs_rest(self):
+    def get_all_loo(self):
         """
         Computes one vs rest decomposition for all features
         """
         results = pd.DataFrame(index=self.fs, columns=self.RETURN_NAMES)
         for feature in tqdm.tqdm(self.fs):
-            results.loc[feature] = self.get_one_vs_rest(feature).scores
+            results.loc[feature] = self.get_loo(feature).scores
         return SurplusExplanation('one vs rest', results)
     
-    def get_pairs_vs_rest(self, fixed_feature):
+    def get_pairs_cond_rest(self, fixed_feature):
         """
         For a fixed feature, computes pairwise decompositions conditional on the
         respective remainder.
@@ -397,10 +394,10 @@ class CollabExplainer:
         for feature in tqdm.tqdm(rest):
             C = [f for f in rest if f != feature]
             results.loc[feature] = self.get([[fixed_feature], [feature]], C=C)
-        ex = CollabExplanation(f'{fixed_feature} vs j | rest', results)
+        ex = CollabExplanation(f'{fixed_feature} vs j | rest', results, feature)
         return ex
     
-    def get_one_vs_rest_cond_one(self, fixed_feature):
+    def get_loo_cond_one(self, fixed_feature):
         rest = [f for f in self.fs if f != fixed_feature]
         one_vs_rest = self.get([fixed_feature, rest])
         results = pd.DataFrame(index=rest, columns=self.RETURN_NAMES)
@@ -410,5 +407,5 @@ class CollabExplainer:
                 raise ValueError('The rest set must contain at least one feature')
             else:
                 results.loc[feature] = one_vs_rest - self.get([fixed_feature, R], C=[feature])
-        ex = CollabExplanation(f'{fixed_feature} vs rest | j', results)
+        ex = CollabExplanation(f'({fixed_feature} vs rest) - ({fixed_feature} vs rest | j)', results, feature)
         return ex
