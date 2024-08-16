@@ -113,7 +113,7 @@ class LinearGAM(Predictor):
             else:
                 return coef * X.loc[:, component_s]
         else:
-            return np.repeat(0, X.shape[0])
+            return pd.Series(0.0, index=X.index)
 
 from interpret.utils._clean_x import preclean_X
 from interpret.glassbox._ebm._bin import ebm_eval_terms

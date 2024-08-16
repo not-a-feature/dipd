@@ -308,9 +308,9 @@ class CollabExplainer:
             g1_test = f_GAM.predict_components(self.X_test, terms_g1)
             g2_test = f_GAM.predict_components(self.X_test, terms_g2)
             
-            if len(C) > 0:
-                g1_train = f_GAM.predict_components(self.X_train, terms_g1)
-                g2_train = f_GAM.predict_components(self.X_train, terms_g2)
+            # if len(C) > 0:
+            g1_train = f_GAM.predict_components(self.X_train, terms_g1)
+            g2_train = f_GAM.predict_components(self.X_train, terms_g2)
             
         else:
             f_GAM_wo_blocked_add = self.__get_model(comb, order, C=C, blocked_fs=block_add, excluded_terms=[])
@@ -319,9 +319,8 @@ class CollabExplainer:
             g1_test = f_GAM_wo_blocked_add.predict_components(self.X_test, terms_g1)
             g2_test = f_GAM_wo_blocked_add.predict_components(self.X_test, terms_g2)
             
-            if len(C) > 0:
-                g1_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g1)
-                g2_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g2)
+            g1_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g1)
+            g2_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g2)
                 
         if len(block_int) > 0:
             excluded_ints = CollabExplainer.__get_interaction_terms_involving(block_int, comb, order, C=C)
@@ -330,34 +329,50 @@ class CollabExplainer:
                                                                 f_wo_blocked_int.predict(self.X_test[fs_full]) + fC_pred_test)
                 
         # if C is not empty, we make the GAM components orthogonal to C to recover uniquness
+        # g1_res_test, g2_res_test, g1_res_train, g2_res_train = (None, None, None, None)
         if len(C) > 0:
                         
             # regressing X_C out of g1
             model_g1 = self.Learner()
             model_g1.fit(self.X_train[C], g1_train)
-            g1_pred = model_g1.predict(self.X_test[C])
-            g1_res = g1_test - g1_pred
+            g1_pred_test = model_g1.predict(self.X_test[C])
+            g1_res_test = g1_test - g1_pred_test
+            g1_res_train = g1_train - model_g1.predict(self.X_train[C])
             
             # regressing X_C out of g2
             model_g2 = self.Learner()
             model_g2.fit(self.X_train[C], g2_train)
-            g2_pred = model_g2.predict(self.X_test[C])
-            g2_res = g2_test - g2_pred
+            g2_pred_test = model_g2.predict(self.X_test[C])
+            g2_res_test = g2_test - g2_pred_test
+            g2_res_train = g2_train - model_g2.predict(self.X_train[C])
             
             gc_test = f_GAM.predict_components(self.X_test, terms_C)
-            var_comp = np.var(g1_pred + g2_pred + gc_test) / np.var(g1_test + g2_test + gc_test)
+            var_comp = np.var(g1_pred_test + g2_pred_test + gc_test) / np.var(g1_test + g2_test + gc_test)
             logging.debug(f'Variance of GAM explained by X_C: {var_comp}')
         else:
-            g1_res = g1_test
-            g2_res = g2_test
+            g1_res_test = g1_test
+            g2_res_test = g2_test
+            g2_res_train = g2_train
+            g1_res_train = g1_train
         
         # compute collaboration scores
-        cov_g1_g2 = np.cov(g1_res, g2_res)[0, 1]
+        cov_g1_g2 = np.cov(g1_res_test, g2_res_test)[0, 1]
+        
+        # redundancy scores
         if len(block_add) == 0:
             additive_collab = v_f_GAM - v_f1 - v_f2 + v_fC
+            additive_collab_wo_cov = additive_collab + 2*cov_g1_g2
         else:
-            additive_collab = v_f_GAM_wo_blocked_add - v_f1 - v_f2 + v_fC
-        additive_collab_wo_cov = additive_collab + 2*cov_g1_g2
+            model_g1_x2 = self.Learner()
+            model_g1_x2.fit(self.X_train[comb[1]], g1_res_train)
+            red1 = np.var(g1_res_test - np.mean(g1_res_test)) - mean_squared_error(g1_res_test, model_g1_x2.predict(self.X_test[comb[1]]))
+            
+            model_g2_x1 = self.Learner()
+            model_g2_x1.fit(self.X_train[comb[0]], g2_res_train)
+            red2 = np.var(g2_res_test - np.mean(g2_res_test)) - mean_squared_error(g2_res_test, model_g2_x1.predict(self.X_test[comb[0]]))
+            
+            additive_collab_wo_cov = -red1 - red2
+            additive_collab = additive_collab_wo_cov - 2*cov_g1_g2
         
         if len(block_int) == 0:                
             interactive_collab = v_f - v_f_GAM
