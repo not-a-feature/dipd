@@ -291,33 +291,47 @@ class CollabExplainer:
         v_f_GAM = v_f_empty - mean_squared_error(self.y_test, f_GAM.predict(self.X_test[fs_full]) + fC_pred_test)
         v_f1 = v_f_empty - mean_squared_error(self.y_test, f1.predict(self.X_test[fs_0]) + fC_pred_test)
         v_f2 = v_f_empty - mean_squared_error(self.y_test, f2.predict(self.X_test[fs_1]) + fC_pred_test)
+        # v_f_GAM_wo_blocked_add = None
+        # v_f_wo_blocked_int = None
 
         # get the GAM components
         terms_C = self.__get_terms(C, order)
         terms_g1 = self.__get_terms(fs_0, order, exclude=terms_C)
         terms_g2 = self.__get_terms(fs_1, order, exclude=terms_C)
-                
-        # get the GAM predictions on test data
-        g1_test = f_GAM.predict_components(self.X_test, terms_g1)
-        g2_test = f_GAM.predict_components(self.X_test, terms_g2)
         
+        # test and train components for the GAM (either the full GAM or the blocked GAM, depending on the parameters)
+        g1_train, g1_test = (None, None) 
+        g2_train, g2_test = (None, None)
+                        
+        # get the GAM predictions on test data
+        if len(block_add) == 0:
+            g1_test = f_GAM.predict_components(self.X_test, terms_g1)
+            g2_test = f_GAM.predict_components(self.X_test, terms_g2)
+            
+            if len(C) > 0:
+                g1_train = f_GAM.predict_components(self.X_train, terms_g1)
+                g2_train = f_GAM.predict_components(self.X_train, terms_g2)
+            
+        else:
+            f_GAM_wo_blocked_add = self.__get_model(comb, order, C=C, blocked_fs=block_add, excluded_terms=[])
+            v_f_GAM_wo_blocked_add = v_f_empty - mean_squared_error(self.y_test,
+                                                                    f_GAM_wo_blocked_add.predict(self.X_test[fs_full]) + fC_pred_test)
+            g1_test = f_GAM_wo_blocked_add.predict_components(self.X_test, terms_g1)
+            g2_test = f_GAM_wo_blocked_add.predict_components(self.X_test, terms_g2)
+            
+            if len(C) > 0:
+                g1_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g1)
+                g2_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g2)
+                
         if len(block_int) > 0:
             excluded_ints = CollabExplainer.__get_interaction_terms_involving(block_int, comb, order, C=C)
             f_wo_blocked_int = self.__get_model([fs], order, C=C, excluded_terms=excluded_ints)
             v_f_wo_blocked_int = v_f_empty - mean_squared_error(self.y_test,
                                                                 f_wo_blocked_int.predict(self.X_test[fs_full]) + fC_pred_test)
-        if len(block_add) > 0:
-            f_GAM_wo_blocked_add = self.__get_model(comb, order, C=C, blocked_fs=block_add, excluded_terms=[])
-            v_f_GAM_wo_blocked_add = v_f_empty - mean_squared_error(self.y_test,
-                                                                    f_GAM_wo_blocked_add.predict(self.X_test[fs_full]) + fC_pred_test)
-            g1_blocked_test = f_GAM_wo_blocked_add.predict_components(self.X_test, terms_g1)
-            g2_blocked_test = f_GAM_wo_blocked_add.predict_components(self.X_test, terms_g2)        
-        
+                
         # if C is not empty, we make the GAM components orthogonal to C to recover uniquness
         if len(C) > 0:
-            g1_train = f_GAM.predict_components(self.X_train, terms_g1)
-            g2_train = f_GAM.predict_components(self.X_train, terms_g2)
-            
+                        
             # regressing X_C out of g1
             model_g1 = self.Learner()
             model_g1.fit(self.X_train[C], g1_train)
@@ -339,23 +353,18 @@ class CollabExplainer:
         
         # compute collaboration scores
         cov_g1_g2 = np.cov(g1_res, g2_res)[0, 1]
-        additive_collab = v_f_GAM - v_f1 - v_f2 + v_fC
-        additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
-        interactive_collab = v_f - v_f_GAM
-        
-        # TODO move this up such that it also works if C is nonempty
-        # compute interactive collab if there are blocked interactions
-        if len(block_int) > 0:
-            interactive_collab = v_f_wo_blocked_int - v_f_GAM
-            
-        # compute additive collab if there are blocked additive terms
-        if len(block_add) > 0:
+        if len(block_add) == 0:
+            additive_collab = v_f_GAM - v_f1 - v_f2 + v_fC
+        else:
             additive_collab = v_f_GAM_wo_blocked_add - v_f1 - v_f2 + v_fC
-            cov_g1_g2 = np.cov(g1_blocked_test, g2_blocked_test)[0, 1]
-            additive_collab_wo_cov = additive_collab + 2*cov_g1_g2
-        # end TODO area    
+        additive_collab_wo_cov = additive_collab + 2*cov_g1_g2
         
-
+        if len(block_int) == 0:                
+            interactive_collab = v_f - v_f_GAM
+        else:
+            interactive_collab = v_f_wo_blocked_int - v_f_GAM
+        
+        
         if self.verbose:
             print(f'comb: {comb}, C: {C}')
             print(f'v(comb + C): {v_f} \n v(C): {v_fC} \n  v(comb[0] + C): {v_f1} \n v(comb[1] + C): {v_f2}')
@@ -487,4 +496,14 @@ class CollabExplainer:
             else:
                 results.loc[feature] = one_vs_rest - self.get([fixed_feature, R], C=[feature])
         ex = CollabExplanation(f'({fixed_feature} vs rest) - ({fixed_feature} vs rest | j)', results, feature)
+        return ex
+    
+    def get_loo_one_blocked(self, fixed_feature):
+        rest = [f for f in self.fs if f != fixed_feature]
+        results = pd.DataFrame(index=rest, columns=self.RETURN_NAMES)
+        full = self.get([fixed_feature, rest])
+        for feature in tqdm.tqdm(rest):
+            blocked = self.get([fixed_feature, rest], block_add=[feature], block_int=[feature])
+            results.loc[feature] = full - blocked
+        ex = CollabExplanation(f'{fixed_feature} vs rest blocked', results, feature)
         return ex
