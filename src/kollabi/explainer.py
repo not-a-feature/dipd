@@ -104,27 +104,51 @@ class CollabExplainer:
             return res_s
         
     @staticmethod
-    def __get_terms(fs, order, exclude=[]):
-        fs_s = sorted(fs)
-        terms = sum([list(itertools.combinations(fs_s, d)) for d in range(2, order+1)], [])
+    def __get_terms(fs, order, exclude=None, blocked_fs=None):
+        """
+        Gets all possible terms of a given order for a set of features.
+        with exclude specific terms can be excluded, with blocked_fs features can be 
+        excluded from the set of features.
+        """
+        if exclude is None:
+            exclude = []
+        if blocked_fs is None:
+            blocked_fs = []
+        
+        fs_wo_block = [f for f in fs if f not in blocked_fs]
+        fs_s = sorted(fs_wo_block)
+        terms = sum([list(itertools.combinations(fs_s, d)) for d in range(1, order+1)], [])
         terms = [term for term in terms if term not in exclude]
         # if order >= 1:
         #     terms += fs
         return terms
     
     @staticmethod
-    def __get_excluded_terms(comb, order, C=[]):
+    def __get_excluded_terms(comb, order, C=None, blocked_fs=None):
         """
         Get the terms that are not in the combination.
         """
+        if C is None:
+            C = []
+        if blocked_fs is None:
+            blocked_fs = []
+            
         C_l = list(C)
-        termss = [CollabExplainer.__get_terms(elem + C_l, order) for elem in comb]
+        termss = [CollabExplainer.__get_terms(elem + C_l, order, blocked_fs=blocked_fs) for elem in comb]
         allowed_terms = list(itertools.chain(*termss))
         fs = [f for gr in comb for f in gr] + C_l
         all_terms = CollabExplainer.__get_terms(fs, order)
         return [term for term in all_terms if term not in allowed_terms]
+    
+    @staticmethod
+    def __get_interaction_terms_involving(fs, comb, order, C=None):
+        if C is None:
+            C = []
+        interaction_terms = CollabExplainer.__get_excluded_terms(comb, order, C=C)
+        int_terms_involving_fs = [term for term in interaction_terms if any([f in term for f in fs])]
+        return int_terms_involving_fs
         
-    def __get_model(self, comb, order, C=[]):
+    def __get_model(self, comb, order, C=None, excluded_terms=None, blocked_fs=None):
         """
         The comb tuple of tuples indicates which groups of features are allowed to interact.
         The order specifies the max order of interactions.
@@ -135,13 +159,22 @@ class CollabExplainer:
         i.e. we fit the model on the residual of the best model with the features C.
         Those features and all interactions involving the features can also be used by the model.
         """
+        if C is None:
+            C = []
+        if excluded_terms is None:
+            excluded_terms = []
+        if blocked_fs is None:
+            blocked_fs = []
+        
         # add conditioning set
         comb_s = CollabExplainer.__sort_comb(comb)
         C_s = sorted(list(C))
         fs = [f for gr in comb for f in gr]
         fs_full = fs + C
+    
+        excluded_terms_s = CollabExplainer.__sort_comb(excluded_terms, inner_only=False)
                 
-        key = (order, comb_s, tuple(C_s))
+        key = (order, comb_s, tuple(C_s), tuple(excluded_terms_s), tuple(sorted(blocked_fs)))
         if key in self.models.keys():
             logging.debug(f'Using precomputed model for {comb_s}')
             return self.models[key]
@@ -156,23 +189,29 @@ class CollabExplainer:
             else:
                 y_res_C_train = self.y_train
                 
-            # specify model and the allowed interactions
+            # add interactions between groups to the list of excluded terms
             if len(comb_s) > 1:
-                excluded_terms = CollabExplainer.__get_excluded_terms(comb, order, C=C)
-                model = self.Learner(exclude=excluded_terms)
-            else:
+                excluded_terms += CollabExplainer.__get_excluded_terms(comb, order, C=C,
+                                                                       blocked_fs=blocked_fs)
+            # fit model
+            if len(excluded_terms) == 0:
                 model = self.Learner(exclude=None)
-                
+            else:
+                model = self.Learner(exclude=excluded_terms)
             model.fit(self.X_train.loc[:, fs_full], y_res_C_train)
+            
+            # store model and return result
             self.models[key] = model
             return model
                 
-    def __assert_comb_valid(self, comb, C=[]):
+    def __assert_comb_valid(self, comb, C=None):
         """
         Asserts that the combination contains two elements, that the features are in the columns, that the 
         two sets are disjoint. If an element is a string, it is converted to a list, such that always a list
         of two lists is returned.
         """
+        if C is None:
+            C = []
         assert len(comb) == 2, 'Please provide exactly two sets of features'
         comb_ = list(comb)
         for i in range(len(comb_)):
@@ -187,19 +226,26 @@ class CollabExplainer:
         assert len(set(comb_[0]).union(set(comb_[1])).intersection(set(C))) == 0, 'the conditioning set must be disjoint from the two sets'
         return comb_
                     
-    def get(self, comb, order=2, C=[]):
+    def get(self, comb, order=2, C=None, block_int=None, block_add=None):
+        if C is None:
+            C = []
+        if block_int is None:
+            block_int = []
+        if block_add is None:
+            block_add = []
+        
         comb = self.__assert_comb_valid(comb)
         comb_s = CollabExplainer.__sort_comb(comb)
-        key = (comb_s, tuple(sorted(C)))
+        key = (comb_s, tuple(sorted(C)), tuple(sorted(block_int)), tuple(sorted(block_add)))
         if key in self.decomps.keys():
             res = self.decomps[key]
             return self.__adjust_order(comb, res)
         else:
-            res = self.__compute(list(comb_s), order=order, C=C)
+            res = self.__compute(list(comb_s), order=order, C=C, block_int=block_int, block_add=block_add)
             self.decomps[key] = res
             return res
         
-    def __compute(self, comb, order=2, C=[]):
+    def __compute(self, comb, order=2, C=None, block_int=None, block_add=None):
         """
         Computes decomposition for a combination comb conditional on
         a group of features C. Uses GAMs of at most order `order`
@@ -210,6 +256,13 @@ class CollabExplainer:
             order (int, optional): The maximum order of interactions. Defaults to 2.
             C (list, optional): A list of features that are assumed to be known. Defaults to [].
         """
+        if C is None:
+            C = []
+        if block_int is None:
+            block_int = []
+        if block_add is None:
+            block_add = []
+        
         comb = self.__assert_comb_valid(comb)
         return_names = self.RETURN_NAMES
         
@@ -233,26 +286,52 @@ class CollabExplainer:
         f_GAM = self.__get_model(comb, order, C=C)
         f1 = self.__get_model([comb[0]], order, C=C)
         f2 = self.__get_model([comb[1]], order, C=C)
-
+        
         v_f = v_f_empty - mean_squared_error(self.y_test, f.predict(self.X_test[fs_full]) + fC_pred_test)
         v_f_GAM = v_f_empty - mean_squared_error(self.y_test, f_GAM.predict(self.X_test[fs_full]) + fC_pred_test)
         v_f1 = v_f_empty - mean_squared_error(self.y_test, f1.predict(self.X_test[fs_0]) + fC_pred_test)
         v_f2 = v_f_empty - mean_squared_error(self.y_test, f2.predict(self.X_test[fs_1]) + fC_pred_test)
+        # v_f_GAM_wo_blocked_add = None
+        # v_f_wo_blocked_int = None
 
         # get the GAM components
-        terms_C = self.__get_terms(C, order) + C
-        terms_g1 = self.__get_terms(fs_0, order, exclude=terms_C) + comb[0]
-        terms_g2 = self.__get_terms(fs_1, order, exclude=terms_C) + comb[1]
-                
-        # get the GAM components
-        g1_test = f_GAM.predict_components(self.X_test, terms_g1)
-        g2_test = f_GAM.predict_components(self.X_test, terms_g2)        
+        terms_C = self.__get_terms(C, order)
+        terms_g1 = self.__get_terms(fs_0, order, exclude=terms_C)
+        terms_g2 = self.__get_terms(fs_1, order, exclude=terms_C)
         
+        # test and train components for the GAM (either the full GAM or the blocked GAM, depending on the parameters)
+        g1_train, g1_test = (None, None) 
+        g2_train, g2_test = (None, None)
+                        
+        # get the GAM predictions on test data
+        if len(block_add) == 0:
+            g1_test = f_GAM.predict_components(self.X_test, terms_g1)
+            g2_test = f_GAM.predict_components(self.X_test, terms_g2)
+            
+            if len(C) > 0:
+                g1_train = f_GAM.predict_components(self.X_train, terms_g1)
+                g2_train = f_GAM.predict_components(self.X_train, terms_g2)
+            
+        else:
+            f_GAM_wo_blocked_add = self.__get_model(comb, order, C=C, blocked_fs=block_add, excluded_terms=[])
+            v_f_GAM_wo_blocked_add = v_f_empty - mean_squared_error(self.y_test,
+                                                                    f_GAM_wo_blocked_add.predict(self.X_test[fs_full]) + fC_pred_test)
+            g1_test = f_GAM_wo_blocked_add.predict_components(self.X_test, terms_g1)
+            g2_test = f_GAM_wo_blocked_add.predict_components(self.X_test, terms_g2)
+            
+            if len(C) > 0:
+                g1_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g1)
+                g2_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g2)
+                
+        if len(block_int) > 0:
+            excluded_ints = CollabExplainer.__get_interaction_terms_involving(block_int, comb, order, C=C)
+            f_wo_blocked_int = self.__get_model([fs], order, C=C, excluded_terms=excluded_ints)
+            v_f_wo_blocked_int = v_f_empty - mean_squared_error(self.y_test,
+                                                                f_wo_blocked_int.predict(self.X_test[fs_full]) + fC_pred_test)
+                
         # if C is not empty, we make the GAM components orthogonal to C to recover uniquness
         if len(C) > 0:
-            g1_train = f_GAM.predict_components(self.X_train, terms_g1)
-            g2_train = f_GAM.predict_components(self.X_train, terms_g2)
-            
+                        
             # regressing X_C out of g1
             model_g1 = self.Learner()
             model_g1.fit(self.X_train[C], g1_train)
@@ -271,12 +350,21 @@ class CollabExplainer:
         else:
             g1_res = g1_test
             g2_res = g2_test
-                
+        
+        # compute collaboration scores
         cov_g1_g2 = np.cov(g1_res, g2_res)[0, 1]
-        additive_collab = v_f_GAM - v_f1 - v_f2 + v_fC
-        additive_collab_wo_cov = additive_collab + 2*cov_g1_g2            
-        interactive_collab = v_f - v_f_GAM
-
+        if len(block_add) == 0:
+            additive_collab = v_f_GAM - v_f1 - v_f2 + v_fC
+        else:
+            additive_collab = v_f_GAM_wo_blocked_add - v_f1 - v_f2 + v_fC
+        additive_collab_wo_cov = additive_collab + 2*cov_g1_g2
+        
+        if len(block_int) == 0:                
+            interactive_collab = v_f - v_f_GAM
+        else:
+            interactive_collab = v_f_wo_blocked_int - v_f_GAM
+        
+        
         if self.verbose:
             print(f'comb: {comb}, C: {C}')
             print(f'v(comb + C): {v_f} \n v(C): {v_fC} \n  v(comb[0] + C): {v_f1} \n v(comb[1] + C): {v_f2}')
@@ -408,4 +496,14 @@ class CollabExplainer:
             else:
                 results.loc[feature] = one_vs_rest - self.get([fixed_feature, R], C=[feature])
         ex = CollabExplanation(f'({fixed_feature} vs rest) - ({fixed_feature} vs rest | j)', results, feature)
+        return ex
+    
+    def get_loo_one_blocked(self, fixed_feature):
+        rest = [f for f in self.fs if f != fixed_feature]
+        results = pd.DataFrame(index=rest, columns=self.RETURN_NAMES)
+        full = self.get([fixed_feature, rest])
+        for feature in tqdm.tqdm(rest):
+            blocked = self.get([fixed_feature, rest], block_add=[feature], block_int=[feature])
+            results.loc[feature] = full - blocked
+        ex = CollabExplanation(f'{fixed_feature} vs rest blocked', results, feature)
         return ex

@@ -54,14 +54,14 @@ class LinearGAM(Predictor):
         super().__init__(interactions=interactions, exclude=exclude)
         self.model = None
         
-    def get_terms(self, X):
-        terms = list(X.columns)
-        if self.interactions > 0:
-            pairs = list(itertools.combinations(X.columns, 2))
-            pairs = [sorted(list(p)) for p in pairs]
-            if self.exclude is not None:
-                pairs = [p for p in pairs if tuple(p) not in self.exclude]
-            terms += pairs
+    def get_terms(self, X, order=2):
+        if self.interactions == 0:
+            order = 1
+        terms = list([itertools.combinations(X.columns, d) for d in range(1, order+1)])
+        terms = list(itertools.chain(*terms))
+        terms = [sorted(list(p)) for p in terms]
+        if self.exclude is not None:
+            terms = [p for p in terms if tuple(p) not in self.exclude]
         return terms
     
     def __check_interactions(self, X, replace_none=True):
@@ -76,10 +76,15 @@ class LinearGAM(Predictor):
     @staticmethod
     def __get_formula(terms):
         formula = 'y ~'
+        first = True
         for term in terms:
             if isinstance(term, list):
                 term = ' * '.join(term)
-            formula += ' + ' + term
+            if first:
+                formula += ' ' + term
+                first = False
+            else:
+                formula += ' + ' + term
         return formula
         
     def fit(self, X, y):        
@@ -91,8 +96,10 @@ class LinearGAM(Predictor):
             
     def predict_component(self, X, component):
         component_s = component
-        if isinstance(component, list):
-            component_s = sorted(component)
+        if isinstance(component, tuple):
+            component_s = list(component_s)
+        if isinstance(component_s, list):
+            component_s = sorted(component_s)
         if component_s in self.terms:
             if isinstance(component_s, list):
                 term = ':'.join(component_s)
@@ -100,12 +107,13 @@ class LinearGAM(Predictor):
                 term = component_s
             coef = self.model.params[term]
             if isinstance(component_s, list):
-                assert len(component_s) == 2, 'only pairwise interactions supported'
-                return coef * X.loc[:, component_s[0]] * X.loc[:, component_s[1]]
+                prod = X.loc[:, component_s].prod(axis=1)
+                # assert len(component_s) == 2, 'only pairwise interactions supported'
+                return coef * prod
             else:
                 return coef * X.loc[:, component_s]
         else:
-            return 0
+            return np.repeat(0, X.shape[0])
 
 from interpret.utils._clean_x import preclean_X
 from interpret.glassbox._ebm._bin import ebm_eval_terms
