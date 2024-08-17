@@ -16,6 +16,7 @@ from sklearn.metrics import mean_squared_error
 
 from kollabi.plots import forceplot
 from kollabi.explanation import Explanation, SurplusExplanation, CollabExplanation
+from kollabi.utils import remove_string_from_list
 
 interpret_logger = logging.getLogger('interpret')
 interpret_logger.setLevel(logging.WARNING)
@@ -363,13 +364,22 @@ class CollabExplainer:
             additive_collab = v_f_GAM - v_f1 - v_f2 + v_fC
             additive_collab_wo_cov = additive_collab + 2*cov_g1_g2
         else:
-            model_g1_x2 = self.Learner()
-            model_g1_x2.fit(self.X_train[comb[1]], g1_res_train)
-            red1 = np.var(g1_res_test - np.mean(g1_res_test)) - mean_squared_error(g1_res_test, model_g1_x2.predict(self.X_test[comb[1]]))
+            comb_wo_block = remove_string_from_list(comb, block_add)
             
-            model_g2_x1 = self.Learner()
-            model_g2_x1.fit(self.X_train[comb[0]], g2_res_train)
-            red2 = np.var(g2_res_test - np.mean(g2_res_test)) - mean_squared_error(g2_res_test, model_g2_x1.predict(self.X_test[comb[0]]))
+            if len(comb_wo_block[1]) == 0:
+                red1 = 0
+            else:
+                model_g1_x2 = self.Learner()
+                model_g1_x2.fit(self.X_train[comb_wo_block[1]], g1_res_train)
+                red1 = np.var(g1_res_test - np.mean(g1_res_test)) - mean_squared_error(g1_res_test,
+                                                                                    model_g1_x2.predict(self.X_test[comb_wo_block[1]]))
+            if len(comb_wo_block[0]) == 0:
+                red2 = 0
+            else:
+                model_g2_x1 = self.Learner()
+                model_g2_x1.fit(self.X_train[comb_wo_block[0]], g2_res_train)
+                red2 = np.var(g2_res_test - np.mean(g2_res_test)) - mean_squared_error(g2_res_test,
+                                                                                    model_g2_x1.predict(self.X_test[comb_wo_block[0]]))
             
             additive_collab_wo_cov = -red1 - red2
             additive_collab = additive_collab_wo_cov - 2*cov_g1_g2
