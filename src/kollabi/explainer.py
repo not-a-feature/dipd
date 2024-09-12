@@ -273,15 +273,21 @@ class CollabExplainer:
         fs_0 = comb[0] + C
         fs_1 = comb[1] + C
         
+        # best constant prediction
+        f_empty_pred_test = np.repeat(np.mean(self.y_train), self.y_test.shape)
+        v_f_empty = mean_squared_error(self.y_test, f_empty_pred_test)
+        
         # get baseline
         if len(C) > 0:
             fC = self.__get_model([C], order, C=[])
             fC_pred_test = fC.predict(self.X_test.loc[:, C])
+            v_fC = v_f_empty - mean_squared_error(self.y_test, fC_pred_test)
         else:
             fC_pred_test = np.repeat(0, self.y_test.shape)
+            v_fC = 0
         
-        v_f_empty = mean_squared_error(self.y_test, np.repeat(np.mean(self.y_train), self.y_test.shape))
-        v_fC = v_f_empty - mean_squared_error(self.y_test, fC_pred_test)
+        
+        
                 
         f = self.__get_model([fs], order, C=C)
         f_GAM = self.__get_model(comb, order, C=C)
