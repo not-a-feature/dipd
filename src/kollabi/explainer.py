@@ -143,11 +143,35 @@ class CollabExplainer:
     
     @staticmethod
     def __get_interaction_terms_involving(fs, comb, order, C=None):
+        """
+        We have two groups J and RuK where K are the blocked features (fs).
+        We want to find all interactions between groups that are not in
+        JuR and Ruk. 
+        """
         if C is None:
             C = []
+        
+        # find the group of features that fs is in
+        membership = []
+        
+        for gr in comb:
+            tmp = [0 if f in gr else 1 for f in fs]
+            membership.append(sum(tmp) == len(fs))
+            
+        if sum(membership) != 1:
+            raise NotImplementedError('All blocked features must be in the same group.')
+        
+        i = membership.index(True)
+        J = comb[1-i]
+        
+        # get all interaction terms        
         interaction_terms = CollabExplainer.__get_excluded_terms(comb, order, C=C)
+        # fiter out those involving a blocked feature
         int_terms_involving_fs = [term for term in interaction_terms if any([f in term for f in fs])]
-        return int_terms_involving_fs
+        # filter out those involving a feature from the other group
+        int_terms_involving_fs_and_J = [term for term in int_terms_involving_fs if any([f in term for f in J])]
+        
+        return int_terms_involving_fs_and_J
         
     def __get_model(self, comb, order, C=None, excluded_terms=None, blocked_fs=None):
         """
