@@ -15,8 +15,9 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
 from kollabi.plots import forceplot
-from kollabi.explanation import Explanation, SurplusExplanation, CollabExplanation
+from kollabi.explanation import Explanation, SurplusExplanation, CollabExplanation, FeaturewiseExplanation
 from kollabi.utils import remove_string_from_list
+from kollabi.consts import RETURN_NAMES
 
 interpret_logger = logging.getLogger('interpret')
 interpret_logger.setLevel(logging.WARNING)
@@ -35,7 +36,7 @@ class CollabExplainer:
         verbose (bool, optional): Whether to print verbose output. Defaults to False.
     """
 
-    RETURN_NAMES = ['var_g1', 'var_g2', 'var_gC', 'additive_collab_explv', 'additive_collab_cov', 'interactive_collab']
+    RETURN_NAMES = RETURN_NAMES
 
     def __init__(self, df, target, learner, test_size=0.2, verbose=False) -> None:
         self.df = df
@@ -251,7 +252,7 @@ class CollabExplainer:
         assert len(set(comb_[0]).union(set(comb_[1])).intersection(set(C))) == 0, 'the conditioning set must be disjoint from the two sets'
         return comb_
                     
-    def get(self, comb, order=2, C=None, block_int=None, block_add=None):
+    def get(self, comb, order=2, C=None, block_int=None, block_add=None, return_explanation=False):
         if C is None:
             C = []
         if block_int is None:
@@ -264,10 +265,16 @@ class CollabExplainer:
         key = (comb_s, tuple(sorted(C)), tuple(sorted(block_int)), tuple(sorted(block_add)))
         if key in self.decomps.keys():
             res = self.decomps[key]
-            return self.__adjust_order(comb, res)
+            res = self.__adjust_order(comb, res)
         else:
             res = self.__compute(list(comb_s), order=order, C=C, block_int=block_int, block_add=block_add)
             self.decomps[key] = res
+        
+        if return_explanation:
+            data = pd.DataFrame({comb_s[1]: res}).transpose()
+            expl = FeaturewiseExplanation(comb_s[0], data)
+            return expl
+        else:
             return res
         
     def __compute(self, comb, order=2, C=None, block_int=None, block_add=None):

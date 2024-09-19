@@ -5,13 +5,9 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 
-idx = pd.IndexSlice
+from kollabi.consts import FORCEPLOT_COLOR_DICT
 
-FORCEPLOT_COLOR_DICT = {'additive_collab': '#9F76F5', 'additive_collab_explv': '#C776F5',
-                        'additive_collab_cov': '#7677F5', 'interactive_collab': '#7AF58D',
-                        'var_g2': 'gray', 'var_g1': 'darkgrey', 'total': 'black',
-                        'var_gC': 'lightgrey'}
-    
+idx = pd.IndexSlice
 
 def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, color_dict=None,
               explain_surplus=False, rest_feature=2, explain_collab=False):
@@ -20,6 +16,8 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
     data: pd.DataFrame with the decomposition scores as index and the columns as the features
     """
     assert not (explain_collab and explain_surplus), 'Cannot explain both collab and surplus'
+    
+    data = data.copy()
     
     BAR_WIDTH = 0.6  # determines width of the bars
     HLINE_WIDTH = 0.6
@@ -33,8 +31,8 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
         COLOR_DICT = FORCEPLOT_COLOR_DICT
     patches = [mpatches.Patch(color=color, label=label) for label, color in COLOR_DICT.items()]        
 
-    data.loc['additive_collab'] = data.loc['additive_collab_cov'] + data.loc['additive_collab_explv']
-    split_scores = ['additive_collab_cov', 'additive_collab_explv']
+    data.loc['main_effect_dependencies'] = data.loc['main_effect_cov'] + data.loc['main_effect_cross_predictability']
+    split_scores = ['main_effect_cov', 'main_effect_cross_predictability']
     if not split_additive:
         data.drop(split_scores, axis=0, inplace=True)
     
@@ -89,12 +87,12 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
 
         # Initialize the bottom arrays for stacking
         positive_top = np.array(total_scores[feature_names]) - SEPARATOR_IDENT
-        positive_top_split = np.array(data.loc['additive_collab',feature_names]) - SEPARATOR_IDENT/2
+        positive_top_split = np.array(data.loc['main_effect_dependencies',feature_names]) - SEPARATOR_IDENT/2
         negative_bottom = np.array(positive_top) + 2*SEPARATOR_IDENT
         negative_bottom_split = np.array(positive_top_split) + SEPARATOR_IDENT
         
         if split_additive:
-            ax.hlines(data.loc['additive_collab',feature_names], bar_positions - HLINE_WIDTH/2 + DELTA_X, bar_positions + HLINE_WIDTH/2 + DELTA_X, color=COLOR_DICT['additive_collab'], linewidth=2)
+            ax.hlines(data.loc['main_effect_dependencies',feature_names], bar_positions - HLINE_WIDTH/2 + DELTA_X, bar_positions + HLINE_WIDTH/2 + DELTA_X, color=COLOR_DICT['main_effect_dependencies'], linewidth=2)
 
         first_positive = np.ones(len(bar_positions), dtype=bool)
         first_negative = np.ones(len(bar_positions), dtype=bool)
