@@ -10,7 +10,7 @@ from kollabi.consts import FORCEPLOT_COLOR_DICT
 idx = pd.IndexSlice
 
 def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, color_dict=None,
-              explain_surplus=False, rest_feature=2, explain_collab=False):
+              explain_surplus=False, rest_feature=2, explain_collab=False, xticklabel_rotation=45):
     """
     Forecplot that takes the results of decompositions and plots them as a stacked bar plot.
     data: pd.DataFrame with the decomposition scores as index and the columns as the features
@@ -83,7 +83,7 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
 
         # Base position for the bars
         bar_positions = np.arange(len(feature_names))
-        ax.hlines(total_scores[feature_names], bar_positions - HLINE_WIDTH/2 - DELTA_X, bar_positions + HLINE_WIDTH/2 - DELTA_X, color=COLOR_DICT['total'], linewidth=2)
+        ax.hlines(total_scores[feature_names], bar_positions - HLINE_WIDTH/2 - DELTA_X, bar_positions + HLINE_WIDTH/2 - DELTA_X, color=COLOR_DICT['total'], linewidth=3)
 
         # Initialize the bottom arrays for stacking
         positive_top = np.array(total_scores[feature_names]) - SEPARATOR_IDENT
@@ -179,7 +179,7 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
 
         # Set the x-axis labels
         ax.set_xticks(bar_positions)
-        ax.set_xticklabels(feature_names)
+        ax.set_xticklabels(feature_names, rotation=xticklabel_rotation, ha='right')
         sns.despine(top=True, right=True, left=True, bottom=True, ax=ax)
 
         # Add legend
