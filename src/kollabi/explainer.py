@@ -69,7 +69,33 @@ class CollabExplainer:
                 self.test_size = test_size
             self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.df[self.fs], self.df[self.target],
                                                                                     test_size=test_size)
-            self.decomps.clear()
+            self.clear_cache()
+            
+    def set_split(self, X_train, X_test, y_train, y_test):
+        """
+        Sets the training and testing sets.
+
+        Args:
+            X_train (pandas.DataFrame): The training set features.
+            X_test (pandas.DataFrame): The testing set features.
+            y_train (pandas.Series): The training set target variable.
+            y_test (pandas.Series): The testing set target variable.
+
+        Returns:
+            None
+        """
+        self.X_train = X_train
+        self.X_test = X_test
+        self.y_train = y_train
+        self.y_test = y_test
+        self.clear_cache()
+            
+    def clear_cache(self):
+        """
+        Clears the cache of the decompositions.
+        """
+        self.decomps.clear()
+        self.models.clear()
                     
     @staticmethod
     def __sort_comb(comb, inner_only=False):
@@ -316,8 +342,6 @@ class CollabExplainer:
         else:
             fC_pred_test = np.repeat(0, self.y_test.shape)
             v_fC = 0
-        
-        
         
                 
         f = self.__get_model([fs], order, C=C)
