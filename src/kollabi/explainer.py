@@ -44,6 +44,7 @@ class CollabExplainer:
         self.fs = [col for col in df.columns if col != target]
         self.test_size = test_size
         self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(df[self.fs], df[target], test_size=test_size)
+        self.var_y = np.var(self.y_test)
         self.verbose = verbose
         self.decomps = {}
         self.Learner = learner
@@ -69,6 +70,7 @@ class CollabExplainer:
                 self.test_size = test_size
             self.X_train, self.X_test, self.y_train, self.y_test = train_test_split(self.df[self.fs], self.df[self.target],
                                                                                     test_size=test_size)
+            self.var_y = np.var(self.y_test)
             self.clear_cache()
             
     def set_split(self, X_train, X_test, y_train, y_test):
@@ -88,6 +90,7 @@ class CollabExplainer:
         self.X_test = X_test
         self.y_train = y_train
         self.y_test = y_test
+        self.var_y = np.var(self.y_test)
         self.clear_cache()
             
     def clear_cache(self):
@@ -278,7 +281,7 @@ class CollabExplainer:
         assert len(set(comb_[0]).union(set(comb_[1])).intersection(set(C))) == 0, 'the conditioning set must be disjoint from the two sets'
         return comb_
                     
-    def get(self, comb, order=2, C=None, block_int=None, block_add=None, return_explanation=False):
+    def get(self, comb, order=2, C=None, block_int=None, block_add=None, return_explanation=False, normalized=True):
         if C is None:
             C = []
         if block_int is None:
@@ -295,13 +298,18 @@ class CollabExplainer:
         else:
             res = self.__compute(list(comb_s), order=order, C=C, block_int=block_int, block_add=block_add)
             self.decomps[key] = res
+            
+        if normalized:
+            res = res / self.var_y
+        res_return = res.copy()
+        # res_return.drop('var_y', inplace=True)
         
         if return_explanation:
-            data = pd.DataFrame({comb_s[1]: res}).transpose()
+            data = pd.DataFrame({comb_s[1]: res_return}).transpose()
             expl = FeaturewiseExplanation(comb_s[0], data)
             return expl
         else:
-            return res
+            return res_return
         
     def __compute(self, comb, order=2, C=None, block_int=None, block_add=None):
         """
@@ -322,7 +330,8 @@ class CollabExplainer:
             block_add = []
         
         comb = self.__assert_comb_valid(comb)
-        return_names = self.RETURN_NAMES
+        return_names = self.RETURN_NAMES.copy()
+        # return_names.append('var_y')
         
         # comb = [f for gr in comb for f in gr]
         fs = [f for gr in comb for f in gr]
@@ -458,15 +467,15 @@ class CollabExplainer:
             print(f'Additive wo Cov: {additive_collab_wo_cov} \n -2*cov(g1, g2): {-2*cov_g1_g2}')
                      
         # rescale to proportion of variance of Y 
-        var_y = np.var(self.y_test)
-        factor = 1 / var_y
-        v_f1 *= factor
-        v_f2 *= factor
-        additive_collab *= factor
-        additive_collab_wo_cov *= factor
-        cov_g1_g2 *= factor
-        interactive_collab *= factor
-        v_fC *= factor
+        # var_y = np.var(self.y_test)
+        # factor = 1 / var_y
+        # v_f1 *= factor
+        # v_f2 *= factor
+        # additive_collab *= factor
+        # additive_collab_wo_cov *= factor
+        # cov_g1_g2 *= factor
+        # interactive_collab *= factor
+        # v_fC *= factor
                    
         return pd.Series([v_f1, v_f2, v_fC, additive_collab_wo_cov, -2*cov_g1_g2, interactive_collab], index=return_names) 
         

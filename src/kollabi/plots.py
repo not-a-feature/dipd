@@ -10,7 +10,8 @@ from kollabi.consts import FORCEPLOT_COLOR_DICT
 idx = pd.IndexSlice
 
 def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, color_dict=None,
-              explain_surplus=False, rest_feature=2, explain_collab=False, xticklabel_rotation=45):
+              explain_surplus=False, rest_feature=2, explain_collab=False, xticks=True, 
+              xticklabel_rotation=45, center_additive_total=False):
     """
     Forecplot that takes the results of decompositions and plots them as a stacked bar plot.
     data: pd.DataFrame with the decomposition scores as index and the columns as the features
@@ -21,7 +22,7 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
     
     BAR_WIDTH = 0.6  # determines width of the bars
     HLINE_WIDTH = 0.6
-    SEPARATOR_IDENT_PROP = 0.03
+    SEPARATOR_IDENT_PROP = 0.05
     if split_additive:
         BAR_WIDTH = BAR_WIDTH / 2
 
@@ -55,8 +56,12 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
     min_val = (total_scores - data.loc[normal_scores, :].where(data.loc[normal_scores, :] > 0, 0).sum(axis=0)).min()
     
     if split_additive:
-        max_val_split = (total_scores + data.loc[split_scores,:].where(data.loc[split_scores,:] <= 0, 0).abs().sum(axis=0)).max()
-        min_val_split = (total_scores - data.loc[split_scores,:].where(data.loc[split_scores,:] > 0, 0).sum(axis=0)).min()
+        if center_additive_total:
+            additive_total = total_scores
+        else:
+            additive_total = data.loc['main_effect_dependencies']
+        max_val_split = (additive_total + data.loc[split_scores,:].where(data.loc[split_scores,:] <= 0, 0).abs().sum(axis=0)).max()
+        min_val_split = (additive_total - data.loc[split_scores,:].where(data.loc[split_scores,:] > 0, 0).sum(axis=0)).min()
         max_val = max(max_val, max_val_split)
         min_val = min(min_val, min_val_split)
 
@@ -92,6 +97,8 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
         negative_bottom_split = np.array(positive_top_split) + SEPARATOR_IDENT
         
         if split_additive:
+            if center_additive_total:
+                raise NotImplementedError('center_additive_total not implemented yet')
             ax.hlines(data.loc['main_effect_dependencies',feature_names], bar_positions - HLINE_WIDTH/2 + DELTA_X, bar_positions + HLINE_WIDTH/2 + DELTA_X, color=COLOR_DICT['main_effect_dependencies'], linewidth=2)
 
         first_positive = np.ones(len(bar_positions), dtype=bool)
@@ -178,8 +185,17 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
                             
 
         # Set the x-axis labels
-        ax.set_xticks(bar_positions)
-        ax.set_xticklabels(feature_names, rotation=xticklabel_rotation, ha='right')
+        if xticks:
+            ax.set_xticks(bar_positions)
+            if xticklabel_rotation > 0:
+                ha = 'right'
+            else:
+                ha = 'center'
+            ax.set_xticklabels(feature_names, rotation=xticklabel_rotation, ha=ha)
+        else:
+            ax.set_xticks([])
+            ax.set_xticklabels([])
+        
         sns.despine(top=True, right=True, left=True, bottom=True, ax=ax)
 
         # Add legend
