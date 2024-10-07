@@ -235,7 +235,7 @@ class CollabExplainer:
             return self.models[key]
         else:
             logging.debug(f'Fitting model for {comb_s}')
-            
+                        
             # regress out conditioning set if nonempty
             if len(C_s) > 0:
                 model_C = self.__get_model([C_s], order, C=[])
@@ -294,10 +294,10 @@ class CollabExplainer:
         key = (comb_s, tuple(sorted(C)), tuple(sorted(block_int)), tuple(sorted(block_add)))
         if key in self.decomps.keys():
             res = self.decomps[key]
-            res = self.__adjust_order(comb, res)
         else:
             res = self.__compute(list(comb_s), order=order, C=C, block_int=block_int, block_add=block_add)
             self.decomps[key] = res
+        res = self.__adjust_order(comb, res)
             
         if normalized:
             res = res / self.var_y

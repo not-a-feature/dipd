@@ -9,20 +9,27 @@ from kollabi.consts import FORCEPLOT_COLOR_DICT
 
 idx = pd.IndexSlice
 
-def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, color_dict=None,
+def forceplot(data, title, figsize=None, ax=None, split_additive=False, color_dict=None,
               explain_surplus=False, rest_feature=2, explain_collab=False, xticks=True, 
-              xticklabel_rotation=45, center_additive_total=False):
+              xticklabel_rotation=45, center_additive_total=False,
+              hline_width=1.0, bar_width=0.6, separator_ident_prop=0.05, hline_thickness=21,
+              total_color=None, fontsize=7, fontname='Helvetica', ylabel='Normalized Scores'):
     """
     Forecplot that takes the results of decompositions and plots them as a stacked bar plot.
     data: pd.DataFrame with the decomposition scores as index and the columns as the features
     """
     assert not (explain_collab and explain_surplus), 'Cannot explain both collab and surplus'
     
+    TOTAL_COLOR = FORCEPLOT_COLOR_DICT['total']
+    if total_color is not None:
+        TOTAL_COLOR = total_color
+    
     data = data.copy()
     
-    BAR_WIDTH = 0.6  # determines width of the bars
-    HLINE_WIDTH = 0.6
-    SEPARATOR_IDENT_PROP = 0.05
+    BAR_WIDTH = bar_width  # determines width of the bars
+    HLINE_WIDTH = hline_width # determines width of the horizontal lines
+    HLINE_THIKNESS = hline_thickness
+    SEPARATOR_IDENT_PROP = separator_ident_prop # determines wie spitz die spitzen sind
     if split_additive:
         BAR_WIDTH = BAR_WIDTH / 2
 
@@ -83,12 +90,13 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
             HLINE_WIDTH = HLINE_WIDTH / 2
             
         # black line for the zero
-        ax.axhline(0, color='black', linewidth=1)
+        ax.axhline(0, color='black', linewidth=hline_thickness/2)
 
 
         # Base position for the bars
         bar_positions = np.arange(len(feature_names))
-        ax.hlines(total_scores[feature_names], bar_positions - HLINE_WIDTH/2 - DELTA_X, bar_positions + HLINE_WIDTH/2 - DELTA_X, color=COLOR_DICT['total'], linewidth=3)
+        ax.hlines(total_scores[feature_names], bar_positions - HLINE_WIDTH/2 - DELTA_X, bar_positions + HLINE_WIDTH/2 - DELTA_X, color=TOTAL_COLOR,
+                  linewidth=HLINE_THIKNESS)
 
         # Initialize the bottom arrays for stacking
         positive_top = np.array(total_scores[feature_names]) - SEPARATOR_IDENT
@@ -99,7 +107,8 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
         if split_additive:
             if center_additive_total:
                 raise NotImplementedError('center_additive_total not implemented yet')
-            ax.hlines(data.loc['main_effect_dependencies',feature_names], bar_positions - HLINE_WIDTH/2 + DELTA_X, bar_positions + HLINE_WIDTH/2 + DELTA_X, color=COLOR_DICT['main_effect_dependencies'], linewidth=2)
+            ax.hlines(data.loc['main_effect_dependencies',feature_names], bar_positions - HLINE_WIDTH/2 + DELTA_X, bar_positions + HLINE_WIDTH/2 + DELTA_X,
+                      color=COLOR_DICT['main_effect_dependencies'], linewidth=HLINE_THIKNESS)
 
         first_positive = np.ones(len(bar_positions), dtype=bool)
         first_negative = np.ones(len(bar_positions), dtype=bool)
@@ -202,10 +211,10 @@ def forceplot(data, title_fs_name, figsize=None, ax=None, split_additive=False, 
         ax.legend()
         
         # Add labels and title
-        ax.set_ylabel('Proportion of Var(Y)')
-        ax.set_title('Collab explanations for feature {} (f1)'.format(title_fs_name))
         margin = 0.05 * (max_val - min_val)
-        ax.set_ylim(min_val - margin, max_val + margin)
+        ax.set_ylim(min_val - margin - SEPARATOR_IDENT, max_val + margin + SEPARATOR_IDENT)
+        ax.tick_params(axis='both', which='major', labelsize=fontsize, labelfontfamily=fontname)  
+        ax.set_ylabel(ylabel, fontsize=fontsize, fontname=fontname)
+        ax.set_title(title, fontsize=fontsize, fontname=fontname)        
         plt.legend(handles=patches, loc='upper right')
-        
         return ax        
