@@ -15,7 +15,7 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
 from kollabi.plots import forceplot
-from kollabi.explanation import Explanation, SurplusExplanation, CollabExplanation, FeaturewiseExplanation
+from kollabi.explanation import Explanation, SurplusExplanation, CollabExplanation, FeaturewiseExplanation, OneFixedExplanation
 from kollabi.utils import remove_string_from_list
 from kollabi.consts import RETURN_NAMES
 
@@ -546,7 +546,8 @@ class CollabExplainer:
             res_flip = res.rename({self.RETURN_NAMES[0]: self.RETURN_NAMES[1],
                                    self.RETURN_NAMES[1]: self.RETURN_NAMES[0]})
             results.loc[tuple(comb[::-1]), res_flip.index] = res_flip
-        ex = SurplusExplanation(f'{feature} vs j', results, feature)
+        scores = results.loc[slice(feature, ), :]
+        ex = OneFixedExplanation(f'{feature} vs j', scores, feature)
         return ex
     
     def get_loo(self, feature):
@@ -593,12 +594,18 @@ class CollabExplainer:
         ex = CollabExplanation(f'({fixed_feature} vs rest) - ({fixed_feature} vs rest | j)', results, feature)
         return ex
     
-    def get_loo_one_blocked(self, fixed_feature):
+    def get_loo_ablation(self, fixed_feature, blocktype='remainder'):
         rest = [f for f in self.fs if f != fixed_feature]
         results = pd.DataFrame(index=rest, columns=self.RETURN_NAMES)
         full = self.get([fixed_feature, rest])
         for feature in tqdm.tqdm(rest):
-            blocked = self.get([fixed_feature, rest], block_add=[feature], block_int=[feature])
+            if blocktype == 'remainder':
+                blockfs = [f for f in rest if f != feature]
+            elif blocktype == 'one':
+                blockfs = [feature]
+            else:
+                raise NotImplementedError('Blocktype must be one of "remainder" or "one"')
+            blocked = self.get([fixed_feature, rest], block_add=blockfs, block_int=blockfs)
             results.loc[feature] = full - blocked
         ex = CollabExplanation(f'{fixed_feature} vs rest blocked', results, feature)
         return ex

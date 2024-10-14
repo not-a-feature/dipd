@@ -12,7 +12,7 @@ idx = pd.IndexSlice
 def forceplot(data, title, figsize=None, ax=None, split_additive=False, color_dict=None,
               explain_surplus=False, rest_feature=2, explain_collab=False, xticks=True, 
               xticklabel_rotation=45, center_additive_total=False,
-              hline_width=1.0, bar_width=0.6, separator_ident_prop=0.05, hline_thickness=21,
+              hline_width=1.0, bar_width=0.6, separator_ident_prop=0.05, hline_thickness=1,
               total_color=None, fontsize=7, fontname='Helvetica', ylabel='Normalized Scores'):
     """
     Forecplot that takes the results of decompositions and plots them as a stacked bar plot.
@@ -37,7 +37,21 @@ def forceplot(data, title, figsize=None, ax=None, split_additive=False, color_di
     COLOR_DICT = color_dict
     if COLOR_DICT is None:
         COLOR_DICT = FORCEPLOT_COLOR_DICT
-    patches = [mpatches.Patch(color=color, label=label) for label, color in COLOR_DICT.items()]        
+        
+    # build legend color dictionary
+    patches = []
+    labels = []
+    labels.append('total')
+    labels.append('main_effect_dependencies')
+    labels.append('pure_interactions')
+    if not explain_collab:
+        labels.append('v2')
+        if not explain_surplus:
+            labels.append('v1')
+    if split_additive:
+        labels.append('main_effect_cov')
+        labels.append('main_effect_cross_predictability')
+    patches = [mpatches.Patch(color=COLOR_DICT[label], label=label) for label in labels]
 
     data.loc['main_effect_dependencies'] = data.loc['main_effect_cov'] + data.loc['main_effect_cross_predictability']
     split_scores = ['main_effect_cov', 'main_effect_cross_predictability']
@@ -215,6 +229,6 @@ def forceplot(data, title, figsize=None, ax=None, split_additive=False, color_di
         ax.set_ylim(min_val - margin - SEPARATOR_IDENT, max_val + margin + SEPARATOR_IDENT)
         ax.tick_params(axis='both', which='major', labelsize=fontsize, labelfontfamily=fontname)  
         ax.set_ylabel(ylabel, fontsize=fontsize, fontname=fontname)
-        ax.set_title(title, fontsize=fontsize, fontname=fontname)        
-        plt.legend(handles=patches, loc='upper right')
+        ax.set_title(title, fontsize=fontsize, fontname=fontname)    
+        legend = ax.legend(handles=patches, loc='upper right', prop={'family': fontname, 'size': fontsize})    
         return ax        
