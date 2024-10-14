@@ -14,10 +14,10 @@ import seaborn as sns
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import mean_squared_error
 
-from kollabi.plots import forceplot
-from kollabi.explanation import Explanation, SurplusExplanation, CollabExplanation, FeaturewiseExplanation, OneFixedExplanation
-from kollabi.utils import remove_string_from_list
-from kollabi.consts import RETURN_NAMES
+from dipd.plots import forceplot
+from dipd.explanation import Explanation, SurplusExplanation, CollabExplanation, FeaturewiseExplanation, OneFixedExplanation
+from dipd.utils import remove_string_from_list
+from dipd.consts import RETURN_NAMES
 
 interpret_logger = logging.getLogger('interpret')
 interpret_logger.setLevel(logging.WARNING)
@@ -25,7 +25,7 @@ interpret_logger.setLevel(logging.WARNING)
 idx = pd.IndexSlice
 
 
-class CollabExplainer:
+class DIP:
     """
     A class for computing feature decompositions and collaboration measures in a dataset.
 
@@ -126,11 +126,11 @@ class CollabExplainer:
 
     @staticmethod
     def __adjust_order(comb, res):
-        if CollabExplainer.__sort_comb(comb, inner_only=True) == CollabExplainer.__sort_comb(comb, inner_only=False):
+        if DIP.__sort_comb(comb, inner_only=True) == DIP.__sort_comb(comb, inner_only=False):
             return res
         else:
-            res_s = res.rename({CollabExplainer.RETURN_NAMES[0]: CollabExplainer.RETURN_NAMES[1],
-                                CollabExplainer.RETURN_NAMES[1]: CollabExplainer.RETURN_NAMES[0]}, inplace=False).copy()
+            res_s = res.rename({DIP.RETURN_NAMES[0]: DIP.RETURN_NAMES[1],
+                                DIP.RETURN_NAMES[1]: DIP.RETURN_NAMES[0]}, inplace=False).copy()
             res_s = res_s.loc[res.index]
             return res_s
         
@@ -165,10 +165,10 @@ class CollabExplainer:
             blocked_fs = []
             
         C_l = list(C)
-        termss = [CollabExplainer.__get_terms(elem + C_l, order, blocked_fs=blocked_fs) for elem in comb]
+        termss = [DIP.__get_terms(elem + C_l, order, blocked_fs=blocked_fs) for elem in comb]
         allowed_terms = list(itertools.chain(*termss))
         fs = [f for gr in comb for f in gr] + C_l
-        all_terms = CollabExplainer.__get_terms(fs, order)
+        all_terms = DIP.__get_terms(fs, order)
         return [term for term in all_terms if term not in allowed_terms]
     
     @staticmethod
@@ -195,7 +195,7 @@ class CollabExplainer:
         J = comb[1-i]
         
         # get all interaction terms        
-        interaction_terms = CollabExplainer.__get_excluded_terms(comb, order, C=C)
+        interaction_terms = DIP.__get_excluded_terms(comb, order, C=C)
         # fiter out those involving a blocked feature
         int_terms_involving_fs = [term for term in interaction_terms if any([f in term for f in fs])]
         # filter out those involving a feature from the other group
@@ -222,12 +222,12 @@ class CollabExplainer:
             blocked_fs = []
         
         # add conditioning set
-        comb_s = CollabExplainer.__sort_comb(comb)
+        comb_s = DIP.__sort_comb(comb)
         C_s = sorted(list(C))
         fs = [f for gr in comb for f in gr]
         fs_full = fs + C
     
-        excluded_terms_s = CollabExplainer.__sort_comb(excluded_terms, inner_only=False)
+        excluded_terms_s = DIP.__sort_comb(excluded_terms, inner_only=False)
                 
         key = (order, comb_s, tuple(C_s), tuple(excluded_terms_s), tuple(sorted(blocked_fs)))
         if key in self.models.keys():
@@ -246,7 +246,7 @@ class CollabExplainer:
                 
             # add interactions between groups to the list of excluded terms
             if len(comb_s) > 1:
-                excluded_terms += CollabExplainer.__get_excluded_terms(comb, order, C=C,
+                excluded_terms += DIP.__get_excluded_terms(comb, order, C=C,
                                                                        blocked_fs=blocked_fs)
             # fit model
             if len(excluded_terms) == 0:
@@ -290,7 +290,7 @@ class CollabExplainer:
             block_add = []
         
         comb = self.__assert_comb_valid(comb)
-        comb_s = CollabExplainer.__sort_comb(comb)
+        comb_s = DIP.__sort_comb(comb)
         key = (comb_s, tuple(sorted(C)), tuple(sorted(block_int)), tuple(sorted(block_add)))
         if key in self.decomps.keys():
             res = self.decomps[key]
@@ -394,7 +394,7 @@ class CollabExplainer:
             g2_train = f_GAM_wo_blocked_add.predict_components(self.X_train, terms_g2)
                 
         if len(block_int) > 0:
-            excluded_ints = CollabExplainer.__get_interaction_terms_involving(block_int, comb, order, C=C)
+            excluded_ints = DIP.__get_interaction_terms_involving(block_int, comb, order, C=C)
             f_wo_blocked_int = self.__get_model([fs], order, C=C, excluded_terms=excluded_ints)
             v_f_wo_blocked_int = v_f_empty - mean_squared_error(self.y_test,
                                                                 f_wo_blocked_int.predict(self.X_test[fs_full]) + fC_pred_test)

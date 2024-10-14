@@ -1,5 +1,5 @@
 import pandas as pd
-from kollabi.plots import forceplot
+from dipd.plots import forceplot
 
 class Explanation:
     def __init__(self, title: str, scores: pd.DataFrame):

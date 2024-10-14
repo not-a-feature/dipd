@@ -3,13 +3,13 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "kollabi"
+name = "dipd"
 version = "0.0.1"
 authors = [
   { name="Gunnar König", email="g.koenig.edu@pm.me" },
   { name="Eric Günther", email="eric.guenther@uni-tuebingen.de" },
 ]
-description = "Quantifying collaboration between variables."
+description = "Disentangling Interactions and Dependencies (DIP) Decomposition."
 readme = "README.md"
 requires-python = ">=3.8"
 classifiers = [
@@ -30,6 +30,6 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/gcskoenig/kollabi"
-Issues = "https://github.com/gcskoenig/kollabi/issues"
+Homepage = "https://github.com/gcskoenig/dipd"
+Issues = "https://github.com/gcskoenig/dipd/issues"
 

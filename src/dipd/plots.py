@@ -5,7 +5,7 @@ import seaborn as sns
 import numpy as np
 import pandas as pd
 
-from kollabi.consts import FORCEPLOT_COLOR_DICT
+from dipd.consts import FORCEPLOT_COLOR_DICT
 
 idx = pd.IndexSlice
 
