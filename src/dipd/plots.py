@@ -13,7 +13,8 @@ def forceplot(data, title, figsize=None, ax=None, split_additive=False, color_di
               explain_surplus=False, rest_feature=2, explain_collab=False, xticks=True, 
               xticklabel_rotation=45, center_additive_total=False,
               hline_width=1.0, bar_width=0.6, separator_ident_prop=0.05, hline_thickness=1,
-              total_color=None, fontsize=7, fontname='Helvetica', ylabel='Normalized Scores'):
+              total_color=None, fontsize=7, fontname='Helvetica', ylabel='Normalized Scores',
+              sort_by='score'):
     """
     Forecplot that takes the results of decompositions and plots them as a stacked bar plot.
     data: pd.DataFrame with the decomposition scores as index and the columns as the features
@@ -69,7 +70,13 @@ def forceplot(data, title, figsize=None, ax=None, split_additive=False, color_di
     if explain_collab:
         normal_scores = [col for col in normal_scores if 'collab' in col]
     total_scores = data.loc[normal_scores, :].sum(axis=0)
-    data = data[total_scores.sort_values(ascending=False).index]
+    
+    if sort_by == 'score':
+        data = data[total_scores.sort_values(ascending=False).index]
+    elif sort_by == 'name':
+        data = data[sorted(data.columns)]
+    else:
+        raise ValueError(f'Unknown sort_by value: {sort_by}')
     total_scores = total_scores[data.columns]
     
     # take total score, add negative values to get max, subtract positive values to get min
