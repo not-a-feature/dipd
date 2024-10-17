@@ -4,7 +4,7 @@ This package implements the DIP method (details and link to the paper will follo
 
 ## Installation
 
-You can install the package using pip. Clone the repository to your device, and then pip install the package.
+So far the package is not on pypi. You can download and install the package locally using pip. Clone the repository to your device, and in the folder into which you cloned the repo run the following command.
 
 ```
 pip install dipd/
