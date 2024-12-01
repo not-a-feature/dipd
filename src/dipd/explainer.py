@@ -354,15 +354,24 @@ class DIP:
             fC_pred_test = np.repeat(0, self.y_test.shape)
             v_fC = 0
         
-        logger.debug(f'Fitting full model.')        
+        logger.debug(f'Fitting full model ({len(fs)} features).')
+        ts = time.time()        
         f = self.__get_model([fs], order, C=C)
+        logging.debug(f'Fitting full model took {time.time() - ts} seconds.')
+        ts = time.time()
         logger.debug('Fitting GAM.')
         f_GAM = self.__get_model(comb, order, C=C)
+        logging.debug(f'Fitting GAM took {time.time() - ts} seconds.')
+        ts = time.time()
         logger.debug('Fitting standalone model 1.')
         f1 = self.__get_model([comb[0]], order, C=C)
-        logger.debug('Fitting standalone model 1.')
+        logger.debug(f'Fitting standalone model 1 took {time.time() - ts} seconds.')
+        ts = time.time()
+        logger.debug('Fitting standalone model 2.')
         f2 = self.__get_model([comb[1]], order, C=C)
+        logger.debug(f'Fitting standalone model 2 took {time.time() - ts} seconds.')
         logger.debug('Finished fitting models.')
+        
         
         v_f = v_f_empty - mean_squared_error(self.y_test, f.predict(self.X_test[fs_full]) + fC_pred_test)
         v_f_GAM = v_f_empty - mean_squared_error(self.y_test, f_GAM.predict(self.X_test[fs_full]) + fC_pred_test)
