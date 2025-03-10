@@ -1,3 +1,12 @@
+import matplotlib
+
+# Use Arial as the font family
+matplotlib.rcParams['font.family'] = 'Arial'
+
+# Ensure TrueType fonts are used instead of Type 3
+matplotlib.rcParams['pdf.fonttype'] = 42  # Use TrueType fonts
+matplotlib.rcParams['ps.fonttype'] = 42  # Use TrueType fonts for PS output
+
 RETURN_NAMES = ['v1', 'v2', 'vC', 'main_effect_cross_predictability', 'main_effect_cov', 'pure_interactions']
 # FORCEPLOT_COLOR_DICT = {'main_effect_dependencies': '#9F76F5', 'main_effect_cross_predictability': '#C776F5',
 #                         'main_effect_cov': '#7677F5', 'pure_interactions': '#7AF58D',
@@ -9,6 +18,6 @@ FORCEPLOT_COLOR_DICT = {'main_effect_dependencies': '#946EE6', 'main_effect_cros
                         'v2': 'gray', 'v1': 'darkgrey', 'total': 'black',
                         'vC': 'lightgrey', 'loco': '#D98068', 'joint': '#A69C37'}
 
-PLOTS_FONT_AESTHETICS = {'fontsize': 7, 'fontname': 'Helvetica'}
+PLOTS_FONT_AESTHETICS = {'fontsize': 7, 'fontname': 'Arial'}
 
 # NOTE: pure interaction color for text #64C285
