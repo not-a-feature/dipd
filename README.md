@@ -45,6 +45,7 @@ print(explanation.scores)
 import matplotlib.pyplot as plt
 from dipd.plots import forceplot
 
-ax = forceplot(explanation.scores.T, 'DIP Decomposition of LOCO scores', figsize=(5, 5), explain_surplus=True)
+ax = forceplot(explanation.scores.T, 'DIP Decomposition of LOCO scores',
+               figsize=(5, 5), explain_surplus=True)
 plt.show()
 ```
