@@ -46,6 +46,16 @@ import matplotlib.pyplot as plt
 from dipd.plots import forceplot
 
 ax = forceplot(explanation.scores.T, 'DIP Decomposition of LOCO scores',
-               figsize=(5, 5), explain_surplus=True)
+               figsize=(3, 3), explain_surplus=True)
+ax.get_legend().remove()
 plt.show()
 ```
+
+The code produces the following plot.
+
+![DIP Decomposition Plot](.github/images/readmefig.png "Forceplot DIP Decomposition")
+d
+
+The plot can be interpreted as follows: Each bar explains one LOCO score as the sum of standalone contribution (gray)
+ and the contributions of interactions (green) and dependencies (purple).
+ Each bar is visualized as a forceplot, meaning that the direction of each bar indicates the sign, where downward facing bars are negative contributions and upward facing bars positive contributions. The bars sum up to the black horizontal lines, which are the LOCO scores of the features.
