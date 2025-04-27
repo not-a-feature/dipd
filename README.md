@@ -54,7 +54,6 @@ plt.show()
 The code produces the following plot.
 
 ![DIP Decomposition Plot](.github/images/readmefig.png "Forceplot DIP Decomposition")
-d
 
 The plot can be interpreted as follows: Each bar explains one LOCO score as the sum of standalone contribution (gray)
  and the contributions of interactions (green) and dependencies (purple).
