@@ -7,11 +7,15 @@ The DIP decomposition was introduced in [this paper](https://arxiv.org/pdf/2410.
 
 ## Installation
 
-`dipd` is intended to work with **python 3.11.** and newer and can be installed using pip.
+`dipd` is intended to work with **python 3.11.** and newer. 
+It can be installed as follows.
+```
+git clone https://github.com/gcskoenig/dipd
+cd dipd
+pip install .
+```
 
-```
-pip install dipd
-```
+Soon, the package will also be available on pypi.
 
 ## Usage
 
