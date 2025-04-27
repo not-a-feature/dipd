@@ -1,9 +1,9 @@
-# DIPD Package
+# DIP Decomposition Package (`dipd`) 
 
 **The DIP Decomposition** is a loss-based global feature attribution technique, that explains how much each feature contributes to the predictive performance.
 In contrast to standard feature attribution techniques it separates the standalone contributions of the individual features and cooperative contributions stemming from interactions and dependencies between features.
 
-The DIP decomposition was introduced in [this paper](https://arxiv.org/pdf/2410.23772).
+The DIP decomposition was introduced in [this paper](https://arxiv.org/pdf/2410.23772), titled "Disentangling Interactions and Dependencies in Feature Attribution".
 
 ## Installation
 
@@ -60,3 +60,4 @@ The code produces the following plot.
 The plot can be interpreted as follows: Each bar explains one LOCO score as the sum of standalone contribution (gray)
  and the contributions of interactions (green) and dependencies (purple).
  Each bar is visualized as a forceplot, meaning that the direction of each bar indicates the sign, where downward facing bars are negative contributions and upward facing bars positive contributions. The bars sum up to the black horizontal lines, which are the LOCO scores of the features.
+
