@@ -25,7 +25,7 @@ dependencies = [
   "seaborn",
   "ucimlrepo",
   "tqdm",
-  "scipy",
+  "scipy<1.10",
   "scikit-learn",
   "category-encoders",
   "statsmodels",
