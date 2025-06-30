@@ -21,11 +21,6 @@ N_TRIALS = 8
 
 # Function to run a single trial for a given feature count
 def run_trial(k):
-    from sklearn.datasets import make_regression
-    import numpy as np, pandas as pd, time
-    from dipd.explainer import DIP
-    from dipd.learners import EBM
-
     # Generate synthetic regression dataset for this trial
     X, y = make_regression(n_samples=N_SAMPLES, n_features=N_FEATURES, noise=0.1)
     feature_names = [f"feature_{i}" for i in range(N_FEATURES)]
