@@ -12,48 +12,68 @@ from dipd.explainer import DIP
 from dipd.learners import EBM
 from sklearn.datasets import make_regression
 
+# Constants for dataset generation
+N_SAMPLES = 1000
+N_FEATURES = 50
+N_TRIALS = 10
 
-def main():
-    # Generate synthetic regression dataset
-    N_SAMPLES = 1000
-    N_FEATURES = 5
-    X, y = make_regression(n_samples=N_SAMPLES, n_features=N_FEATURES, noise=0.1, random_state=42)
+
+# Function to run a single trial for a given feature count
+def run_trial(k):
+    from sklearn.datasets import make_regression
+    import numpy as np, pandas as pd, time
+    from dipd.explainer import DIP
+    from dipd.learners import EBM
+
+    # Generate synthetic regression dataset for this trial
+    X, y = make_regression(n_samples=N_SAMPLES, n_features=N_FEATURES, noise=0.1)
     feature_names = [f"feature_{i}" for i in range(N_FEATURES)]
     df = pd.DataFrame(X, columns=feature_names)
     df["target"] = y
 
+    # Sample random subset of features and split for decomposition
+    features_k = list(np.random.choice(feature_names, k, replace=False))
+    df_k = df[features_k + ["target"]]
+    half = k // 2
+    comb = (features_k[:half], features_k[half:])
+
+    start = time.time()
+    _ = DIP(df_k, "target", learner=EBM).get(comb, order=2)
+    elapsed = time.time() - start
+    print(f"k={k}, time={elapsed:.4f} seconds")
+    return elapsed
+
+
+def main():
+    # Dummy warmup run for consistent timing
+    print("Running dummy warmup for k=2...")
+    try:
+        _ = run_trial(2)
+    except Exception as e:
+        print(f"Warmup run error: {e}")
+
+    # Feature counts to test
     feature_counts = list(range(2, N_FEATURES + 1, 2))
     min_times = []
     avg_times = []
     max_times = []
     error_occurred = False
+    print(f"Starting runtime benchmark for k={feature_counts}")
+    print(f"Number of trials per feature count: {N_TRIALS}")
+
     for k in feature_counts:
+        # Run trials sequentially with fresh dataset each time
         times = []
-        for trial in range(5):
-            # Sample random subset of features
-            features_k = list(np.random.choice(feature_names, k, replace=False))
-            df_k = df[features_k + ["target"]]
-
-            # Split features into two groups for decomposition
-            half = k // 2
-            comb = (features_k[:half], features_k[half:])
-
+        for trial in range(N_TRIALS):
             try:
-                dip = DIP(df_k, "target", learner=EBM)
-                start = time.time()
-                _ = dip.get(comb, order=2)
-                elapsed = time.time() - start
+                elapsed = run_trial(k)
                 times.append(elapsed)
-                print(f"k={k}, trial={trial}, time={elapsed:.4f} seconds")
             except Exception as e:
                 print(f"Error at k={k}, trial={trial}: {e}")
                 error_occurred = True
                 break
         if error_occurred:
             break
-        min_times.append(min(times))
-        avg_times.append(sum(times) / len(times))
-        max_times.append(max(times))
 
     # Plot runtime measurements
     # Truncate feature_counts to match collected timings
