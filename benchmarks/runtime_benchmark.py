@@ -4,6 +4,7 @@ import sys, os
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+import csv
 
 # Add src directory to Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir, "src")))
@@ -58,6 +59,8 @@ def main():
     avg_times = []
     max_times = []
     error_occurred = False
+    all_results = []  # Store (k, trial, elapsed) for all runs
+
     print(f"Starting runtime benchmark for k={feature_counts}")
     print(f"Number of trials per feature count: {N_TRIALS}")
 
@@ -68,12 +71,24 @@ def main():
             try:
                 elapsed = run_trial(k)
                 times.append(elapsed)
+                all_results.append((k, trial, elapsed))
             except Exception as e:
                 print(f"Error at k={k}, trial={trial}: {e}")
                 error_occurred = True
                 break
         if error_occurred:
             break
+        min_times.append(min(times))
+        avg_times.append(sum(times) / len(times))
+        max_times.append(max(times))
+
+    # Write all raw results to CSV
+    csv_path = "runtime_vs_features.csv"
+    with open(csv_path, mode="w", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(["num_features", "trial", "time"])
+        for k, trial, elapsed in all_results:
+            writer.writerow([k, trial, elapsed])
 
     # Plot runtime measurements
     # Truncate feature_counts to match collected timings
