@@ -47,9 +47,10 @@ def run_trial(k):
 
 def main():
     # Dummy warmup run for consistent timing
-    print("Running dummy warmup for k=2...")
+    print("Running dummy warmup 5 times for k=3...")
     try:
-        _ = run_trial(2)
+        for _ in range(5):
+            _ = run_trial(3)
     except Exception as e:
         print(f"Warmup run error: {e}")
 
