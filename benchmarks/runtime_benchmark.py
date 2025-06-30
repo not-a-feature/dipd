@@ -15,8 +15,8 @@ from sklearn.datasets import make_regression
 
 # Constants for dataset generation
 N_SAMPLES = 1000
-N_FEATURES = 50
-N_TRIALS = 10
+N_FEATURES = 20
+N_TRIALS = 8
 
 
 # Function to run a single trial for a given feature count
