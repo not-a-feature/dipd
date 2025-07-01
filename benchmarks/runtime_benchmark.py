@@ -16,7 +16,7 @@ from sklearn.datasets import make_regression
 
 # Constants for dataset generation
 N_SAMPLES = 1000
-N_FEATURES = 30
+N_FEATURES = 50
 N_TRIALS = 8
 N_STEPS = 2
 
@@ -55,7 +55,7 @@ def main():
 
     # Write all raw results progressively to CSV
     csv_path = "runtime_vs_features.csv"
-    with open(csv_path, mode="w", newline="") as f:
+    with open(csv_path, mode="a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["num_features", "trial", "time"])
 
