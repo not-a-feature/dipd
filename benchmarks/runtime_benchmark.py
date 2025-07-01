@@ -16,8 +16,8 @@ from sklearn.datasets import make_regression
 
 # Constants for dataset generation
 N_SAMPLES = 1000
-N_FEATURES = 60
-N_TRIALS = 10
+N_FEATURES = 100
+N_TRIALS = 5
 N_STEPS = 2
 
 
@@ -44,10 +44,7 @@ def run_trial(k):
 
 def main():
     # Feature counts to test
-    feature_counts = list(range(2, N_FEATURES + 1, N_STEPS))
-    min_times = []
-    avg_times = []
-    max_times = []
+    feature_counts = list(range(50, N_FEATURES + 1, N_STEPS))
     error_occurred = False
 
     print(f"Starting runtime benchmark for k={feature_counts}")
@@ -55,7 +52,7 @@ def main():
 
     # Write all raw results progressively to CSV
     csv_path = "runtime_vs_features.csv"
-    with open(csv_path, mode="w", newline="") as f:
+    with open(csv_path, mode="a", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["num_features", "trial", "time"])
 
