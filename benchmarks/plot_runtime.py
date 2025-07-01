@@ -26,7 +26,7 @@ exp_model = lambda x: a * np.exp(b * x)
 
 # Extrapolate up to 100 features
 step = int(np.diff(sorted(df_avg["num_features"]))[0]) if len(df_avg) > 1 else 1
-x_pred = np.arange(x.min(), 30, step)
+x_pred = np.arange(x.min(), 100, step)
 
 y_exp_pred = exp_model(x_pred)
 

@@ -16,8 +16,8 @@ from sklearn.datasets import make_regression
 
 # Constants for dataset generation
 N_SAMPLES = 1000
-N_FEATURES = 50
-N_TRIALS = 8
+N_FEATURES = 60
+N_TRIALS = 10
 N_STEPS = 2
 
 
@@ -62,28 +62,42 @@ def main():
         # Dummy warmup run for consistent timing
         print("Running dummy warmup ...")
         try:
-            for i in range(2, 5):
+            for i in range(2, 6):
                 _ = run_trial(i)
         except Exception as e:
             print(f"Warmup run error: {e}")
 
+        # Create a list of all runs and shuffle them
+        runs = []
         for k in feature_counts:
-            # Run trials sequentially with fresh dataset each time
-            times = []
             for trial in range(N_TRIALS):
-                try:
-                    elapsed = run_trial(k)
-                    times.append(elapsed)
-                    writer.writerow([k, trial, elapsed])  # Write each result immediately
-                except Exception as e:
-                    print(f"Error at k={k}, trial={trial}: {e}")
-                    error_occurred = True
-                    break
-            if error_occurred:
+                runs.append((k, trial))
+        random.shuffle(runs)
+
+        # Store results to calculate min/avg/max later
+        results = {k: [] for k in feature_counts}
+
+        for k, trial in runs:
+            try:
+                elapsed = run_trial(k)
+                results[k].append(elapsed)
+                writer.writerow([k, trial, elapsed])  # Write each result immediately
+            except Exception as e:
+                print(f"Error at k={k}, trial={trial}: {e}")
+                error_occurred = True
                 break
-            min_times.append(min(times))
-            avg_times.append(sum(times) / len(times))
-            max_times.append(max(times))
+        if error_occurred:
+            # Exit if an error occurred during the runs
+            print("Benchmark stopped due to an error.")
+            return
+
+        # Calculate statistics after all runs are complete
+        for k in sorted(results.keys()):
+            times = results[k]
+            if times:
+                min_times.append(min(times))
+                avg_times.append(sum(times) / len(times))
+                max_times.append(max(times))
 
     print(f"Raw results written progressively to {csv_path}")
 
