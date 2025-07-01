@@ -55,17 +55,9 @@ def main():
 
     # Write all raw results progressively to CSV
     csv_path = "runtime_vs_features.csv"
-    with open(csv_path, mode="a", newline="") as f:
+    with open(csv_path, mode="w", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(["num_features", "trial", "time"])
-
-        # Dummy warmup run for consistent timing
-        print("Running dummy warmup ...")
-        try:
-            for i in range(2, 6):
-                _ = run_trial(i)
-        except Exception as e:
-            print(f"Warmup run error: {e}")
 
         # Create a list of all runs and shuffle them
         runs = []
@@ -76,6 +68,14 @@ def main():
 
         # Store results to calculate min/avg/max later
         results = {k: [] for k in feature_counts}
+
+        # Dummy warmup run for consistent timing
+        print("Running dummy warmup ...")
+        try:
+            for i in range(2, 6):
+                _ = run_trial(i)
+        except Exception as e:
+            print(f"Warmup run error: {e}")
 
         for k, trial in runs:
             try:
@@ -91,13 +91,13 @@ def main():
             print("Benchmark stopped due to an error.")
             return
 
-        # Calculate statistics after all runs are complete
-        for k in sorted(results.keys()):
-            times = results[k]
-            if times:
-                min_times.append(min(times))
-                avg_times.append(sum(times) / len(times))
-                max_times.append(max(times))
+    # Calculate statistics after all runs are complete
+    for k in sorted(results.keys()):
+        times = results[k]
+        if times:
+            min_times.append(min(times))
+            avg_times.append(sum(times) / len(times))
+            max_times.append(max(times))
 
     print(f"Raw results written progressively to {csv_path}")
 
