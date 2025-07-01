@@ -91,14 +91,6 @@ def main():
             print("Benchmark stopped due to an error.")
             return
 
-    # Calculate statistics after all runs are complete
-    for k in sorted(results.keys()):
-        times = results[k]
-        if times:
-            min_times.append(min(times))
-            avg_times.append(sum(times) / len(times))
-            max_times.append(max(times))
-
     print(f"Raw results written progressively to {csv_path}")
 
 
